@@ -1,0 +1,2 @@
+Fixed MSMC v5+ import: removed ElectronManager, updated login flow to Auth().launch('electron').
+Removed token refresh stub.

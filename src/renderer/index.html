@@ -1,0 +1,232 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fishbattery Launcher</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+        connect-src https: http://localhost:5173 ws://localhost:5173;
+        img-src 'self' data: https://crafatar.com https://mc-heads.net;
+        style-src 'self' 'unsafe-inline';
+        script-src 'self' 'unsafe-inline'"
+    />
+  </head>
+
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="dot"></div>
+          <div>
+            <strong>Fishbattery Launcher</strong>
+            <small>Underwater fabric launcher</small>
+          </div>
+        </div>
+
+        <div class="nav">
+          <button id="navLibrary" class="active">Library</button>
+          <button id="navSettings">Settings</button>
+        </div>
+
+        <div class="sidebarFooter">Data is stored per instance in your launcher folder.</div>
+      </aside>
+
+      <section class="main">
+        <div class="topbar">
+          <div class="search">
+            <span>Search</span>
+            <input id="searchInstances" placeholder="Search instances by name or version" />
+          </div>
+
+          <div class="account">
+            <button id="accountBtn" class="accountBtn">
+              <div class="accountLeft">
+                <span class="avatar" id="accountAvatar">
+                  <img id="accountAvatarImg" />
+                </span>
+                <div class="accountMeta">
+                  <strong id="accountName">Not signed in</strong>
+                  <small id="accountSub">Add an account</small>
+                </div>
+              </div>
+              <span class="chev">▾</span>
+            </button>
+
+            <div id="accountDropdown" class="dropdown">
+              <div class="dropdownHeader">Accounts</div>
+              <div id="accountItems"></div>
+              <div class="popSep"></div>
+              <div style="padding:10px 12px">
+                <button id="accountAdd" class="btn" style="width:100%">+ Add account</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="viewLibrary" class="content">
+          <div class="sectionTitle">
+            <div>
+              <h2>Library</h2>
+              <p>Manage instances and launch Minecraft.</p>
+            </div>
+            <div class="topActions">
+              <button id="btnCreate" class="btn btnPrimary">+ Create</button>
+              <button id="btnPlayActive" class="btn btnPrimary">Play</button>
+              <button id="btnStopActive" class="btn">Stop</button>
+            </div>
+          </div>
+
+          <div id="instancesGrid" class="grid"></div>
+
+          <div class="logs">
+            <div class="logsHeader">
+              <strong>Logs</strong>
+              <div class="spacer"></div>
+              <button id="btnClearLogs" class="btn">Clear</button>
+            </div>
+            <pre id="logs"></pre>
+            <div id="statusText" class="statusText"></div>
+          </div>
+        </div>
+
+        <div id="viewSettings" class="content" style="display:none">
+          <div class="sectionTitle">
+            <div>
+              <h2>Settings</h2>
+              <p>Launcher preferences (stored locally).</p>
+            </div>
+          </div>
+
+          <div class="settingsLayout">
+            <div class="settingsNav">
+              <button id="settingsTabGeneral" class="setNavBtn active">General</button>
+              <button id="settingsTabInstall" class="setNavBtn">Install</button>
+              <button id="settingsTabWindow" class="setNavBtn">Window</button>
+              <button id="settingsTabJava" class="setNavBtn">Java</button>
+              <button id="settingsTabHooks" class="setNavBtn">Hooks</button>
+            </div>
+
+            <div class="settingsPanel">
+              <div id="settingsPanelGeneral" class="setPanel"></div>
+              <div id="settingsPanelInstall" class="setPanel" style="display:none"></div>
+              <div id="settingsPanelWindow" class="setPanel" style="display:none"></div>
+              <div id="settingsPanelJava" class="setPanel" style="display:none"></div>
+              <div id="settingsPanelHooks" class="setPanel" style="display:none"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Modal -->
+    <div id="modalBackdrop" class="modalBackdrop">
+      <div class="modal">
+        <div class="modalHeader">
+          <strong id="modalTitle">Create an instance</strong>
+          <button id="modalClose" class="iconBtn">✕</button>
+        </div>
+
+        <div class="modalBody">
+          <div class="tabs">
+            <button id="modalTabGeneral" class="tab active">Edit</button>
+            <button id="modalTabMods" class="tab">Mods</button>
+            <button id="modalTabPacks" class="tab">Packs</button>
+          </div>
+
+          <div id="modalPanelGeneral">
+            <div class="field">
+              <label>Name</label>
+              <input id="newName" placeholder="Enter a name for your instance" />
+            </div>
+
+            <div class="field">
+              <label>Account</label>
+              <select id="instanceAccount"></select>
+              <div class="muted" style="font-size:12px; margin-top:6px">
+                This instance will always launch with this account.
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="field" style="flex:1">
+                <label>Game version</label>
+                <select id="newVersion"></select>
+              </div>
+              <div class="field" style="width:160px">
+                <label>Memory (MB)</label>
+                <input id="newMem" placeholder="4096" />
+              </div>
+            </div>
+          </div>
+
+          <div id="modalPanelMods" style="display:none">
+            <div class="row" style="justify-content:space-between; align-items:center">
+              <div>
+                <div class="muted" id="modalModsHint">Select an instance first.</div>
+                <div class="muted" style="font-size:12px">
+                  Toggles apply instantly. Use “Update Mods” to fetch the newest compatible files.
+                </div>
+              </div>
+              <button id="modalUpdateMods" class="btn">Update Mods</button>
+            </div>
+
+            <div style="height:12px"></div>
+            <div id="modalModsList"></div>
+
+            <div style="height:16px"></div>
+            <div class="row" style="justify-content:space-between; align-items:center">
+              <div>
+                <div class="muted" style="font-size:12px">
+                  Local mods (.jar) you manually add to this instance.
+                </div>
+              </div>
+              <div class="row" style="gap:8px">
+                <button id="modalUploadLocalMod" class="btn">Upload .jar</button>
+                <button id="modalOpenInstanceFolder" class="btn">Open Folder</button>
+              </div>
+            </div>
+
+            <div style="height:12px"></div>
+            <div id="modalLocalModsList"></div>
+          </div>
+
+          <div id="modalPanelPacks" style="display:none">
+            <div class="muted" style="font-size:12px; margin-bottom:10px">
+              Upload shader packs (.zip) and resource packs (.zip) into this instance.
+            </div>
+
+            <div class="row" style="justify-content:space-between; align-items:center">
+              <strong style="font-size:13px">Resource packs</strong>
+              <div class="row" style="gap:8px">
+                <button id="btnUploadResourcepack" class="btn">Upload .zip</button>
+                <button id="btnOpenInstanceFolder2" class="btn">Open Folder</button>
+              </div>
+            </div>
+            <div style="height:10px"></div>
+            <div id="resourcepacksList"></div>
+
+            <div style="height:18px"></div>
+
+            <div class="row" style="justify-content:space-between; align-items:center">
+              <strong style="font-size:13px">Shader packs</strong>
+              <div class="row" style="gap:8px">
+                <button id="btnUploadShaderpack" class="btn">Upload .zip</button>
+                <button id="btnOpenInstanceFolder3" class="btn">Open Folder</button>
+              </div>
+            </div>
+            <div style="height:10px"></div>
+            <div id="shaderpacksList"></div>
+          </div>
+        </div>
+
+        <div class="modalFooter">
+          <button id="modalCancel" class="btn">Cancel</button>
+          <button id="modalCreate" class="btn btnPrimary">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
