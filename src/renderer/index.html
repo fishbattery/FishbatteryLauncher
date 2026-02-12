@@ -182,17 +182,19 @@
                   <div id="modrinthSearchResults" style="margin-top:10px; max-height:230px; overflow:auto"></div>
                 </div>
                 <div id="createCurseForgePanel" style="margin-top:10px; display:none">
-                  <div class="setHelp" id="providerArchiveHelp">
-                    Import provider archive to create a new instance.
-                  </div>
                   <div class="row" style="gap:8px; justify-content:flex-start; margin-top:8px">
                     <input id="providerSearchInput" class="setControl" placeholder="Search packs..." style="min-width:260px; flex:1; max-width:none" />
                     <button id="btnProviderSearch" class="btn" type="button">Search</button>
                   </div>
                   <div id="providerResultsLabel" class="setHelp" style="margin-top:8px">Popular packs</div>
                   <div id="providerSearchResults" style="margin-top:10px; max-height:210px; overflow:auto"></div>
-                  <div class="row" style="margin-top:10px; justify-content:flex-start">
+                  <div id="providerArchiveActions" style="margin-top:10px">
+                    <div class="setHelp" id="providerArchiveHelp">
+                      Import provider archive to create a new instance.
+                    </div>
+                    <div class="row" style="margin-top:10px; justify-content:flex-start">
                     <button id="btnProviderImportArchive" class="btn" type="button">Import pack archive</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -211,6 +213,19 @@
                 <button id="btnResetInstanceIconTransform" class="btn" type="button">Reset fit</button>
               </div>
               <div id="instanceIconHint" class="muted" style="font-size:12px; margin-top:6px">No custom icon selected.</div>
+              <div id="instanceIconPreviewWrap" style="margin-top:8px; display:none">
+                <div class="setHelp">Drag to reposition preview</div>
+                <div
+                  id="instanceIconPreviewFrame"
+                  style="width:96px; height:96px; border-radius:14px; overflow:hidden; border:1px solid rgba(61,117,166,.55); margin-top:6px; position:relative; cursor:grab; background:linear-gradient(135deg,#12303f,#1b577a)"
+                >
+                  <img
+                    id="instanceIconPreviewImage"
+                    alt="Icon preview"
+                    style="position:absolute; left:0; top:0; width:100%; height:100%; object-fit:cover; transform-origin:center center; user-select:none; pointer-events:none"
+                  />
+                </div>
+              </div>
               <div id="instanceIconTransformControls" style="margin-top:8px">
                 <div class="setHelp">Resize and reposition custom icon</div>
                 <div class="row" style="justify-content:flex-start; gap:8px; margin-top:6px">

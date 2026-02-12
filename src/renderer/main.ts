@@ -119,6 +119,7 @@ const createProviderMarketplaceTitle = $("createProviderMarketplaceTitle");
 const createProviderMarketplaceHelp = $("createProviderMarketplaceHelp");
 const createModrinthPanel = $("createModrinthPanel");
 const createCurseForgePanel = $("createCurseForgePanel");
+const providerArchiveActions = $("providerArchiveActions");
 const providerArchiveHelp = $("providerArchiveHelp");
 const providerSearchInput = $("providerSearchInput") as HTMLInputElement;
 const btnProviderSearch = $("btnProviderSearch");
@@ -133,6 +134,9 @@ const btnPickInstanceIcon = $("btnPickInstanceIcon");
 const btnClearInstanceIcon = $("btnClearInstanceIcon");
 const btnResetInstanceIconTransform = $("btnResetInstanceIconTransform");
 const instanceIconHint = $("instanceIconHint");
+const instanceIconPreviewWrap = $("instanceIconPreviewWrap");
+const instanceIconPreviewFrame = $("instanceIconPreviewFrame");
+const instanceIconPreviewImage = $("instanceIconPreviewImage") as HTMLImageElement;
 const instanceIconScale = $("instanceIconScale") as HTMLInputElement;
 const instanceIconScaleValue = $("instanceIconScaleValue");
 const instanceIconOffsetX = $("instanceIconOffsetX") as HTMLInputElement;
@@ -195,6 +199,11 @@ let clearExistingIconOnSave = false;
 let selectedIconScalePct = 100;
 let selectedIconOffsetXPct = 0;
 let selectedIconOffsetYPct = 0;
+let iconPreviewDragging = false;
+let iconPreviewDragStartX = 0;
+let iconPreviewDragStartY = 0;
+let iconPreviewDragOriginX = 0;
+let iconPreviewDragOriginY = 0;
 
 function getSelectedIconTransformPayload() {
   return {
@@ -211,6 +220,7 @@ function renderIconTransformUi() {
   instanceIconOffsetXValue.textContent = `${selectedIconOffsetXPct}%`;
   instanceIconOffsetY.value = String(selectedIconOffsetYPct);
   instanceIconOffsetYValue.textContent = `${selectedIconOffsetYPct}%`;
+  renderIconPreviewTransform();
 }
 
 function resetSelectedIconTransform() {
@@ -220,16 +230,49 @@ function resetSelectedIconTransform() {
   renderIconTransformUi();
 }
 
+function pathToFileUrl(p: string) {
+  const normalized = String(p || "").replace(/\\/g, "/");
+  if (!normalized) return "";
+  const withSlash = /^[a-zA-Z]:\//.test(normalized) ? `/${normalized}` : normalized;
+  return encodeURI(`file://${withSlash}`);
+}
+
+function setIconPreviewSource(filePath: string | null) {
+  if (!filePath) {
+    instanceIconPreviewWrap.style.display = "none";
+    instanceIconPreviewImage.removeAttribute("src");
+    return;
+  }
+  instanceIconPreviewImage.src = pathToFileUrl(filePath);
+  instanceIconPreviewImage.onerror = () => {
+    instanceIconPreviewWrap.style.display = "none";
+  };
+  instanceIconPreviewWrap.style.display = "";
+  renderIconPreviewTransform();
+}
+
+function renderIconPreviewTransform() {
+  if (!selectedCreateIconPath) return;
+  const scale = Math.max(0.5, Math.min(2.5, selectedIconScalePct / 100));
+  const shiftX = (selectedIconOffsetXPct / 100) * 28;
+  const shiftY = (selectedIconOffsetYPct / 100) * 28;
+  instanceIconPreviewImage.style.transform = `translate(${shiftX}px, ${shiftY}px) scale(${scale})`;
+}
+
 // ---------------- Settings ----------------
-type InstancePresetId = "none" | "max-fps" | "shader-friendly" | "distant-horizons-worldgen";
+type LoaderKind = "vanilla" | "fabric" | "quilt" | "forge" | "neoforge";
+type InstancePresetId = "none" | "max-fps" | "shader-friendly" | "distant-horizons-worldgen" | "pvp";
+type InstancePresetVariant = {
+  memoryMb: number;
+  enableMods: string[];
+  enablePacks: string[];
+};
 
 type InstancePreset = {
   id: Exclude<InstancePresetId, "none">;
   name: string;
   description: string;
-  memoryMb: number;
-  enableMods: string[];
-  enablePacks: string[];
+  variants: Partial<Record<LoaderKind, InstancePresetVariant>>;
 };
 
 type AppSettings = {
@@ -269,64 +312,132 @@ const INSTANCE_PRESETS: Record<Exclude<InstancePresetId, "none">, InstancePreset
     id: "max-fps",
     name: "Max FPS",
     description: "Prioritizes frame rate and frametime stability with low-overhead visual defaults.",
-    memoryMb: 4096,
-    enableMods: [
-      "sodium",
-      "lithium",
-      "ferrite-core",
-      "indium",
-      "immediatelyfast",
-      "entityculling",
-      "modernfix",
-      "noisium",
-      "c2me",
-      "starlight",
-      "sodium-extra",
-      "reeses-sodium-options",
-      "dynamic-fps"
-    ],
-    enablePacks: ["fast-better-grass", "better-leaves"]
+    variants: {
+      fabric: {
+        memoryMb: 4096,
+        enableMods: [
+          "sodium",
+          "lithium",
+          "ferrite-core",
+          "indium",
+          "immediatelyfast",
+          "entityculling",
+          "modernfix",
+          "noisium",
+          "c2me",
+          "starlight",
+          "sodium-extra",
+          "reeses-sodium-options",
+          "dynamic-fps",
+          "fabric-api"
+        ],
+        enablePacks: ["fast-better-grass", "better-leaves"]
+      },
+      vanilla: { memoryMb: 4096, enableMods: [], enablePacks: ["fast-better-grass", "better-leaves"] },
+      quilt: { memoryMb: 4096, enableMods: [], enablePacks: ["fast-better-grass", "better-leaves"] },
+      forge: { memoryMb: 6144, enableMods: [], enablePacks: ["fast-better-grass", "better-leaves"] },
+      neoforge: { memoryMb: 6144, enableMods: [], enablePacks: ["fast-better-grass", "better-leaves"] }
+    }
   },
   "shader-friendly": {
     id: "shader-friendly",
     name: "Shader Friendly",
     description: "Keeps shader compatibility/performance balance and enables a curated shader stack.",
-    memoryMb: 6144,
-    enableMods: [
-      "sodium",
-      "lithium",
-      "ferrite-core",
-      "indium",
-      "immediatelyfast",
-      "entityculling",
-      "iris",
-      "sodium-extra",
-      "reeses-sodium-options",
-      "dynamic-fps"
-    ],
-    enablePacks: ["complementary-reimagined", "dramatic-skys", "xalis-enchanted-books", "fresh-animations"]
+    variants: {
+      fabric: {
+        memoryMb: 6144,
+        enableMods: [
+          "sodium",
+          "lithium",
+          "ferrite-core",
+          "indium",
+          "immediatelyfast",
+          "entityculling",
+          "iris",
+          "sodium-extra",
+          "reeses-sodium-options",
+          "dynamic-fps",
+          "fabric-api"
+        ],
+        enablePacks: ["complementary-reimagined", "dramatic-skys", "xalis-enchanted-books", "fresh-animations"]
+      },
+      vanilla: {
+        memoryMb: 6144,
+        enableMods: [],
+        enablePacks: ["complementary-reimagined", "dramatic-skys", "xalis-enchanted-books", "fresh-animations"]
+      },
+      quilt: {
+        memoryMb: 6144,
+        enableMods: [],
+        enablePacks: ["complementary-reimagined", "dramatic-skys", "xalis-enchanted-books", "fresh-animations"]
+      },
+      forge: {
+        memoryMb: 7168,
+        enableMods: [],
+        enablePacks: ["complementary-reimagined", "dramatic-skys", "xalis-enchanted-books", "fresh-animations"]
+      },
+      neoforge: {
+        memoryMb: 7168,
+        enableMods: [],
+        enablePacks: ["complementary-reimagined", "dramatic-skys", "xalis-enchanted-books", "fresh-animations"]
+      }
+    }
   },
   "distant-horizons-worldgen": {
     id: "distant-horizons-worldgen",
     name: "Distant Horizons Worldgen Mode",
     description: "Optimized for long-distance terrain generation and traversal-heavy worlds.",
-    memoryMb: 8192,
-    enableMods: [
-      "sodium",
-      "lithium",
-      "ferrite-core",
-      "indium",
-      "immediatelyfast",
-      "entityculling",
-      "modernfix",
-      "noisium",
-      "c2me",
-      "starlight",
-      "sodium-extra",
-      "reeses-sodium-options",
-      "distanthorizons"
-    ],
-    enablePacks: ["fast-better-grass", "better-leaves"]
+    variants: {
+      fabric: {
+        memoryMb: 8192,
+        enableMods: [
+          "sodium",
+          "lithium",
+          "ferrite-core",
+          "indium",
+          "immediatelyfast",
+          "entityculling",
+          "modernfix",
+          "noisium",
+          "c2me",
+          "starlight",
+          "sodium-extra",
+          "reeses-sodium-options",
+          "distanthorizons",
+          "fabric-api"
+        ],
+        enablePacks: ["fast-better-grass", "better-leaves"]
+      },
+      vanilla: { memoryMb: 7168, enableMods: [], enablePacks: ["fast-better-grass", "better-leaves"] },
+      quilt: { memoryMb: 7168, enableMods: [], enablePacks: ["fast-better-grass", "better-leaves"] },
+      forge: { memoryMb: 8192, enableMods: [], enablePacks: ["fast-better-grass", "better-leaves"] },
+      neoforge: { memoryMb: 8192, enableMods: [], enablePacks: ["fast-better-grass", "better-leaves"] }
+    }
+  },
+  pvp: {
+    id: "pvp",
+    name: "PvP Ready",
+    description: "Low-latency visual clarity profile for competitive play without cheat-style modifications.",
+    variants: {
+      fabric: {
+        memoryMb: 4096,
+        enableMods: [
+          "sodium",
+          "lithium",
+          "ferrite-core",
+          "immediatelyfast",
+          "entityculling",
+          "dynamic-fps",
+          "mod-menu",
+          "fabric-api"
+        ],
+        enablePacks: ["xalis-enchanted-books", "f8thful"]
+      },
+      vanilla: { memoryMb: 4096, enableMods: [], enablePacks: ["xalis-enchanted-books", "f8thful"] },
+      quilt: { memoryMb: 4096, enableMods: [], enablePacks: ["xalis-enchanted-books", "f8thful"] },
+      forge: { memoryMb: 5120, enableMods: [], enablePacks: ["xalis-enchanted-books", "f8thful"] },
+      neoforge: { memoryMb: 5120, enableMods: [], enablePacks: ["xalis-enchanted-books", "f8thful"] }
+    }
   }
 };
 
@@ -727,7 +838,15 @@ function allInstancePresetIds(): InstancePresetId[] {
   return ["none", ...Object.keys(INSTANCE_PRESETS)] as InstancePresetId[];
 }
 
-function fillInstancePresetDropdown(selectedId: string | null) {
+function availablePresetIdsForLoader(loader: LoaderKind): InstancePresetId[] {
+  const ids: InstancePresetId[] = ["none"];
+  for (const id of Object.keys(INSTANCE_PRESETS) as Array<Exclude<InstancePresetId, "none">>) {
+    if (INSTANCE_PRESETS[id].variants?.[loader]) ids.push(id);
+  }
+  return ids;
+}
+
+function fillInstancePresetDropdown(selectedId: string | null, loader: LoaderKind = "fabric") {
   instancePreset.innerHTML = "";
 
   const none = document.createElement("option");
@@ -736,6 +855,7 @@ function fillInstancePresetDropdown(selectedId: string | null) {
   instancePreset.appendChild(none);
 
   for (const id of Object.keys(INSTANCE_PRESETS) as Array<Exclude<InstancePresetId, "none">>) {
+    if (!INSTANCE_PRESETS[id].variants?.[loader]) continue;
     const p = INSTANCE_PRESETS[id];
     const opt = document.createElement("option");
     opt.value = id;
@@ -743,16 +863,21 @@ function fillInstancePresetDropdown(selectedId: string | null) {
     instancePreset.appendChild(opt);
   }
 
-  const safe = allInstancePresetIds().includes((selectedId ?? "none") as InstancePresetId)
+  const safe = availablePresetIdsForLoader(loader).includes((selectedId ?? "none") as InstancePresetId)
     ? (selectedId ?? "none")
     : "none";
   instancePreset.value = safe;
 }
 
-async function applyInstancePreset(instanceId: string, mcVersion: string, presetId: InstancePresetId) {
+async function applyInstancePreset(instanceId: string, mcVersion: string, loader: LoaderKind, presetId: InstancePresetId) {
   if (presetId === "none") return;
   const preset = INSTANCE_PRESETS[presetId];
   if (!preset) return;
+  const variant = preset.variants?.[loader];
+  if (!variant) {
+    appendLog(`[preset] "${preset.name}" is not available for loader ${loader}.`);
+    return;
+  }
 
   setStatus(`Applying instance preset "${preset.name}"...`);
 
@@ -768,17 +893,19 @@ async function applyInstancePreset(instanceId: string, mcVersion: string, preset
       appendLog(`[rollback] Snapshot skipped: ${String(err?.message ?? err)}`);
     }
 
-    for (const mod of CATALOG) {
-      const shouldEnable = !!mod.required || preset.enableMods.includes(mod.id);
-      try {
-        await window.api.modsSetEnabled(instanceId, mod.id, shouldEnable);
-      } catch (err: any) {
-        appendLog(`[preset] Failed toggling mod ${mod.id}: ${String(err?.message ?? err)}`);
+    if (loader === "fabric") {
+      for (const mod of CATALOG) {
+        const shouldEnable = mod.id === "fabric-api" || !!mod.required || variant.enableMods.includes(mod.id);
+        try {
+          await window.api.modsSetEnabled(instanceId, mod.id, shouldEnable);
+        } catch (err: any) {
+          appendLog(`[preset] Failed toggling mod ${mod.id}: ${String(err?.message ?? err)}`);
+        }
       }
     }
 
     for (const pack of PACK_CATALOG) {
-      const shouldEnable = !!pack.required || preset.enablePacks.includes(pack.id);
+      const shouldEnable = !!pack.required || variant.enablePacks.includes(pack.id);
       try {
         await window.api.packsSetEnabled(instanceId, pack.id, shouldEnable);
       } catch (err: any) {
@@ -786,23 +913,25 @@ async function applyInstancePreset(instanceId: string, mcVersion: string, preset
       }
     }
 
-    await window.api.instancesUpdate(instanceId, { memoryMb: preset.memoryMb, instancePreset: presetId });
+    await window.api.instancesUpdate(instanceId, { memoryMb: variant.memoryMb, instancePreset: presetId });
 
     // Resolve and install only enabled entries.
-    await window.api.modsRefresh(instanceId, mcVersion);
+    if (loader === "fabric") {
+      await window.api.modsRefresh(instanceId, mcVersion);
+    }
     await window.api.packsRefresh(instanceId, mcVersion);
 
-    const afterMods = await window.api.modsList(instanceId);
+    const afterMods = loader === "fabric" ? await window.api.modsList(instanceId) : { mods: [] as any[] };
     const afterPacks = await window.api.packsList(instanceId);
 
     for (const mod of afterMods?.mods ?? []) {
-      const shouldEnable = !!mod.required || preset.enableMods.includes(mod.id);
+      const shouldEnable = mod.id === "fabric-api" || !!mod.required || variant.enableMods.includes(mod.id);
       if (shouldEnable && mod.status !== "ok") {
         appendLog(`[preset] Mod unavailable for ${mcVersion}: ${mod.name ?? mod.id} (${mod.status})`);
       }
     }
     for (const pack of afterPacks?.items ?? []) {
-      const shouldEnable = !!pack.required || preset.enablePacks.includes(pack.id);
+      const shouldEnable = !!pack.required || variant.enablePacks.includes(pack.id);
       if (shouldEnable && pack.status !== "ok") {
         appendLog(`[preset] Pack unavailable for ${mcVersion}: ${pack.name ?? pack.id} (${pack.status})`);
       }
@@ -1346,6 +1475,19 @@ async function renderServerEntries(instanceId: string | null) {
   }
 }
 
+async function ensureFabricApiForFabricInstance(instanceId: string, mcVersion: string, loader: LoaderKind) {
+  if (loader !== "fabric") return;
+  const hasFabricApi = CATALOG.some((m) => m.id === "fabric-api");
+  if (!hasFabricApi) return;
+  try {
+    await window.api.modsSetEnabled(instanceId, "fabric-api", true);
+    await window.api.modsRefresh(instanceId, mcVersion);
+    appendLog(`[mods] Ensured Fabric API is installed for Fabric instance ${instanceId}.`);
+  } catch (err: any) {
+    appendLog(`[mods] Failed ensuring Fabric API: ${String(err?.message ?? err)}`);
+  }
+}
+
 async function findPreferredServerTarget() {
   const instances = state.instances?.instances ?? [];
   if (!instances.length) return null;
@@ -1591,6 +1733,7 @@ async function renderCompatibilityGuidance(instanceId: string | null) {
 
   const inst = (state.instances?.instances ?? []).find((x: any) => x.id === instanceId) ?? null;
   if (!inst) return;
+  const isFabricLoader = String(inst.loader || "") === "fabric";
 
   const res = await window.api.modsList(instanceId);
   const mods = res?.mods ?? [];
@@ -1603,7 +1746,17 @@ async function renderCompatibilityGuidance(instanceId: string | null) {
   heading.textContent = `Compatibility assistant (${inst.loader}, ${inst.mcVersion})`;
   modalCompatGuidance.appendChild(heading);
 
-  const validation = await window.api.modsValidate(instanceId);
+  if (!isFabricLoader) {
+    const note = document.createElement("div");
+    note.className = "setHelp";
+    note.style.marginBottom = "8px";
+    note.textContent = "Detailed mod validation is currently Fabric-focused. Presets still apply memory and pack profile.";
+    modalCompatGuidance.appendChild(note);
+  }
+
+  const validation = isFabricLoader
+    ? await window.api.modsValidate(instanceId)
+    : { summary: "no-issues", issues: [] as any[] };
   const valCard = document.createElement("div");
   valCard.className = "setRow";
   valCard.style.marginBottom = "8px";
@@ -1641,18 +1794,20 @@ async function renderCompatibilityGuidance(instanceId: string | null) {
     });
   valActions.appendChild(btnRecheck);
 
-  const btnFixDup = document.createElement("button");
-  btnFixDup.className = "btn";
-  btnFixDup.textContent = "Fix duplicates";
-  btnFixDup.onclick = () =>
-    guarded(async () => {
-      const res = await window.api.modsFixDuplicates(instanceId);
-      appendLog(`[validation] Removed duplicate jars: ${res.removed.join(", ") || "none"}`);
-      await renderCompatibilityGuidance(instanceId);
-      await renderInstanceMods(instanceId);
-      await renderLocalContent(instanceId);
-    });
-  valActions.appendChild(btnFixDup);
+  if (isFabricLoader) {
+    const btnFixDup = document.createElement("button");
+    btnFixDup.className = "btn";
+    btnFixDup.textContent = "Fix duplicates";
+    btnFixDup.onclick = () =>
+      guarded(async () => {
+        const res = await window.api.modsFixDuplicates(instanceId);
+        appendLog(`[validation] Removed duplicate jars: ${res.removed.join(", ") || "none"}`);
+        await renderCompatibilityGuidance(instanceId);
+        await renderInstanceMods(instanceId);
+        await renderLocalContent(instanceId);
+      });
+    valActions.appendChild(btnFixDup);
+  }
 
   valCard.appendChild(valLeft);
   valCard.appendChild(valActions);
@@ -1728,9 +1883,10 @@ async function renderCompatibilityGuidance(instanceId: string | null) {
           });
         right.appendChild(btn);
       } else if (
-        issue.code === "missing-dependency" ||
-        issue.code === "incompatible-minecraft" ||
-        issue.code === "loader-mismatch"
+        isFabricLoader &&
+        (issue.code === "missing-dependency" ||
+          issue.code === "incompatible-minecraft" ||
+          issue.code === "loader-mismatch")
       ) {
         const btn = document.createElement("button");
         btn.className = "btn";
@@ -1753,8 +1909,10 @@ async function renderCompatibilityGuidance(instanceId: string | null) {
 
   for (const id of Object.keys(INSTANCE_PRESETS) as Array<Exclude<InstancePresetId, "none">>) {
     const preset = INSTANCE_PRESETS[id];
-    const needed = preset.enableMods.filter((m) => byId.has(m));
-    const missing = needed.filter((m) => byId.get(m)?.status !== "ok");
+    const variant = preset.variants?.[inst.loader as LoaderKind];
+    if (!variant) continue;
+    const needed = isFabricLoader ? variant.enableMods.filter((m) => byId.has(m)) : [];
+    const missing = isFabricLoader ? needed.filter((m) => byId.get(m)?.status !== "ok") : [];
 
     const card = document.createElement("div");
     card.className = "setRow";
@@ -1771,7 +1929,9 @@ async function renderCompatibilityGuidance(instanceId: string | null) {
     const sub = document.createElement("div");
     sub.className = "setHelp";
     sub.textContent =
-      missing.length === 0
+      !isFabricLoader
+        ? "Ready for this loader profile."
+        : missing.length === 0
         ? "Ready for this version."
         : `Missing compatibility: ${missing.join(", ")}`;
 
@@ -1783,7 +1943,7 @@ async function renderCompatibilityGuidance(instanceId: string | null) {
     btn.textContent = "Apply combo";
     btn.onclick = () =>
       guarded(async () => {
-        await applyInstancePreset(instanceId, inst.mcVersion, id);
+        await applyInstancePreset(instanceId, inst.mcVersion, inst.loader as LoaderKind, id);
         await renderCompatibilityGuidance(instanceId);
         await renderInstanceMods(instanceId);
         await renderLocalContent(instanceId);
@@ -2038,8 +2198,9 @@ async function renderInstances() {
       selectedCreateIconPath = null;
       clearExistingIconOnSave = false;
       instanceIconHint.textContent = "Keep existing icon unless you pick a new one.";
+      setIconPreviewSource(null);
       resetSelectedIconTransform();
-      fillInstancePresetDropdown(i.instancePreset ?? "none");
+      fillInstancePresetDropdown(i.instancePreset ?? "none", (i.loader ?? "fabric") as LoaderKind);
       await fillInstanceAccountDropdown(i.accountId ?? null);
       await renderServerEntries(i.id);
       openModal();
@@ -2217,16 +2378,18 @@ function setCreateSource(next: "custom" | "import" | "modrinth" | "curseforge" |
     next === "modrinth"
       ? "Modrinth modpack browser"
       : next === "curseforge"
-        ? "CurseForge pack import"
+        ? "CurseForge pack browser"
         : next === "technic"
-          ? "Technic pack import"
+          ? "Technic pack browser"
           : next === "atlauncher"
-            ? "ATLauncher pack import"
-            : "FTB pack import";
+            ? "ATLauncher pack browser"
+            : "FTB pack browser";
   createProviderMarketplaceHelp.textContent =
     next === "modrinth"
       ? "Browse and install Modrinth modpacks into a new isolated instance."
-      : "Import provider pack archives into a new isolated instance.";
+      : isArchiveProvider
+        ? "Search and import provider pack archives into a new isolated instance."
+        : "Search and install directly from provider catalog.";
   createSourceHint.textContent =
     next === "modrinth"
       ? "Search Modrinth and install directly to a new instance."
@@ -2236,7 +2399,8 @@ function setCreateSource(next: "custom" | "import" | "modrinth" | "curseforge" |
   if (isArchiveProvider) {
     providerArchiveHelp.textContent = `Import ${next.toUpperCase()} archive and create a new instance.`;
   }
-  if (next === "atlauncher" || next === "ftb") {
+  providerArchiveActions.style.display = isArchiveProvider ? "" : "none";
+  if (next === "atlauncher" || next === "ftb" || isArchiveProvider) {
     void guarded(async () => {
       await runProviderSearch();
     });
@@ -2472,7 +2636,10 @@ createFilterSnapshots.onclick = () => {
   renderCreateFilterButtons();
   fillCreateVersionOptions();
 };
-createLoaderType.onchange = () => updateCreateLoaderUi();
+createLoaderType.onchange = () => {
+  updateCreateLoaderUi();
+  fillInstancePresetDropdown(instancePreset.value || "none", (createLoaderType.value || "fabric") as LoaderKind);
+};
 createSourceCustom.onclick = () => setCreateSource("custom");
 createSourceImport.onclick = () => setCreateSource("import");
 createSourceModrinth.onclick = () => setCreateSource("modrinth");
@@ -2502,6 +2669,9 @@ btnCreateImportNow.onclick = () =>
   guarded(async () => {
     const res = await window.api.instancesImport();
     if (!res.ok || res.canceled) return;
+    if (res.instance?.id && res.instance?.mcVersion && res.instance?.loader) {
+      await ensureFabricApiForFabricInstance(res.instance.id, res.instance.mcVersion, res.instance.loader as LoaderKind);
+    }
     if (selectedCreateIconPath && res.instance?.id) {
       try {
         await window.api.instancesSetIconFromFile(res.instance.id, selectedCreateIconPath, getSelectedIconTransformPayload());
@@ -2569,11 +2739,13 @@ btnPickInstanceIcon.onclick = () =>
     selectedCreateIconPath = picked;
     clearExistingIconOnSave = false;
     instanceIconHint.textContent = `Selected: ${picked.split(/[/\\\\]/).pop() || picked}`;
+    setIconPreviewSource(selectedCreateIconPath);
   });
 btnClearInstanceIcon.onclick = () => {
   selectedCreateIconPath = null;
   clearExistingIconOnSave = true;
   instanceIconHint.textContent = "Icon will be cleared on save.";
+  setIconPreviewSource(null);
 };
 btnResetInstanceIconTransform.onclick = () => {
   resetSelectedIconTransform();
@@ -2590,6 +2762,34 @@ instanceIconOffsetY.oninput = () => {
   selectedIconOffsetYPct = Number(instanceIconOffsetY.value || 0);
   renderIconTransformUi();
 };
+instanceIconPreviewFrame.onmousedown = (ev: MouseEvent) => {
+  if (!selectedCreateIconPath) return;
+  iconPreviewDragging = true;
+  iconPreviewDragStartX = ev.clientX;
+  iconPreviewDragStartY = ev.clientY;
+  iconPreviewDragOriginX = selectedIconOffsetXPct;
+  iconPreviewDragOriginY = selectedIconOffsetYPct;
+  (instanceIconPreviewFrame as HTMLElement).style.cursor = "grabbing";
+  ev.preventDefault();
+};
+window.addEventListener("mousemove", (ev) => {
+  if (!iconPreviewDragging) return;
+  const dx = ev.clientX - iconPreviewDragStartX;
+  const dy = ev.clientY - iconPreviewDragStartY;
+  const rect = (instanceIconPreviewFrame as HTMLElement).getBoundingClientRect();
+  const denomX = Math.max(24, rect.width / 2);
+  const denomY = Math.max(24, rect.height / 2);
+  const nextX = iconPreviewDragOriginX + (dx / denomX) * 100;
+  const nextY = iconPreviewDragOriginY + (dy / denomY) * 100;
+  selectedIconOffsetXPct = Math.max(-100, Math.min(100, Math.round(nextX)));
+  selectedIconOffsetYPct = Math.max(-100, Math.min(100, Math.round(nextY)));
+  renderIconTransformUi();
+});
+window.addEventListener("mouseup", () => {
+  if (!iconPreviewDragging) return;
+  iconPreviewDragging = false;
+  (instanceIconPreviewFrame as HTMLElement).style.cursor = "grab";
+});
 
 btnCreate.onclick = async () => {
   modalMode = "create";
@@ -2598,7 +2798,7 @@ btnCreate.onclick = async () => {
   modalTitle.textContent = "Create an instance";
   newName.value = "";
   newMem.value = String(getSettings().defaultMemoryMb ?? 4096);
-  fillInstancePresetDropdown("none");
+  fillInstancePresetDropdown("none", "fabric");
   createIncludeReleases = true;
   createIncludeSnapshots = false;
   renderCreateFilterButtons();
@@ -2613,6 +2813,7 @@ btnCreate.onclick = async () => {
   clearExistingIconOnSave = false;
   resetSelectedIconTransform();
   instanceIconHint.textContent = "No custom icon selected.";
+  setIconPreviewSource(null);
   modrinthSearchInput.value = "";
   modrinthSearchResults.innerHTML = "";
   providerSearchInput.value = "";
@@ -2659,6 +2860,9 @@ modalCreate.onclick = () =>
       if (createSource === "import") {
         const res = await window.api.instancesImport();
         if (!res.ok || res.canceled) return;
+        if (res.instance?.id && res.instance?.mcVersion && res.instance?.loader) {
+          await ensureFabricApiForFabricInstance(res.instance.id, res.instance.mcVersion, res.instance.loader as LoaderKind);
+        }
         if (selectedCreateIconPath && res.instance?.id) {
           try {
             await window.api.instancesSetIconFromFile(
@@ -2696,6 +2900,13 @@ modalCreate.onclick = () =>
               accountId: instanceAccount.value || null,
               memoryMb: Number(newMem.value || 6144)
             });
+            if (installed?.instance?.id && installed.instance?.mcVersion && installed.instance?.loader) {
+              await ensureFabricApiForFabricInstance(
+                installed.instance.id,
+                installed.instance.mcVersion,
+                installed.instance.loader as LoaderKind
+              );
+            }
             if (installed?.instance?.id) {
               if (selectedCreateIconPath) {
                 try {
@@ -2734,6 +2945,13 @@ modalCreate.onclick = () =>
               }
             });
             if (!res.ok || res.canceled) return;
+            if (res.result?.instance?.id && res.result.instance?.mcVersion && res.result.instance?.loader) {
+              await ensureFabricApiForFabricInstance(
+                res.result.instance.id,
+                res.result.instance.mcVersion,
+                res.result.instance.loader as LoaderKind
+              );
+            }
             if (selectedCreateIconPath && res.result?.instance?.id) {
               try {
                 await window.api.instancesSetIconFromFile(
@@ -2775,6 +2993,9 @@ modalCreate.onclick = () =>
           accountId: instanceAccount.value || null,
           memoryMb: Number(newMem.value || 6144)
         });
+        if (res.instance?.id && res.instance?.mcVersion && res.instance?.loader) {
+          await ensureFabricApiForFabricInstance(res.instance.id, res.instance.mcVersion, res.instance.loader as LoaderKind);
+        }
         if (res.instance?.id) {
           if (selectedCreateIconPath) {
             try {
@@ -2872,9 +3093,10 @@ modalCreate.onclick = () =>
                 ? cfg.neoforgeVersion
                 : undefined
       );
+      await ensureFabricApiForFabricInstance(id, mcVersion, loader as LoaderKind);
 
-      if (selectedPreset !== "none" && loader === "fabric") {
-        await applyInstancePreset(id, mcVersion, selectedPreset);
+      if (selectedPreset !== "none") {
+        await applyInstancePreset(id, mcVersion, loader as LoaderKind, selectedPreset);
       }
 
       setStatus("");
@@ -2953,9 +3175,10 @@ modalCreate.onclick = () =>
                 ? nextNeoForgeVersion
                 : undefined
       );
+      await ensureFabricApiForFabricInstance(editInstanceId, nextVersion, nextLoader as LoaderKind);
 
       if (inst && selectedPreset !== "none") {
-        await applyInstancePreset(editInstanceId, nextVersion, selectedPreset);
+        await applyInstancePreset(editInstanceId, nextVersion, nextLoader as LoaderKind, selectedPreset);
       }
       setStatus("");
       state.instances = await window.api.instancesList();
@@ -3261,4 +3484,6 @@ document.addEventListener("click", (e) => {
 // Initial
 applySettingsToDom(getSettings());
 setSettingsTab("general");
+renderIconTransformUi();
+setIconPreviewSource(null);
 refreshAll();
