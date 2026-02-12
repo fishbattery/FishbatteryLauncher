@@ -1,5 +1,6 @@
 import { BrowserWindow, app } from "electron";
 import { autoUpdater } from "electron-updater";
+import fetch from "node-fetch";
 
 export type UpdaterStatus =
   | "idle"
@@ -32,6 +33,19 @@ let state: UpdaterState = {
   updatedAt: Date.now()
 };
 
+type ReleaseAsset = { name: string; browser_download_url: string };
+type GithubRelease = {
+  tag_name: string;
+  draft: boolean;
+  prerelease: boolean;
+  assets: ReleaseAsset[];
+  html_url?: string;
+};
+
+const UPDATE_REPO_OWNER = process.env.UPDATE_REPO_OWNER || "fishbatteryapp";
+const UPDATE_REPO_NAME = process.env.UPDATE_REPO_NAME || "FishbatteryLauncher";
+const UPDATE_UA = `FishbatteryLauncher/${app.getVersion()} updater`;
+
 function emitState() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send("updater:event", state);
@@ -56,6 +70,64 @@ function applyUpdateChannel(channel: UpdateChannel) {
   updateChannel = channel;
   autoUpdater.allowPrerelease = channel === "beta";
   autoUpdater.channel = channel;
+}
+
+async function fetchJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": UPDATE_UA,
+      Accept: "application/vnd.github+json"
+    }
+  });
+  if (!res.ok) {
+    throw new Error(`Release metadata request failed (${res.status})`);
+  }
+  return (await res.json()) as T;
+}
+
+function hasExpectedAssets(assets: ReleaseAsset[]) {
+  const names = new Set((assets || []).map((x) => String(x?.name || "").toLowerCase()));
+  const hasLatestYml = names.has("latest.yml");
+  const hasBlockMap = Array.from(names).some((n) => n.endsWith(".exe.blockmap"));
+  const hasInstaller = Array.from(names).some((n) => /^fishbattery-launcher-.*\.exe$/i.test(n));
+  return { hasLatestYml, hasInstaller, hasBlockMap };
+}
+
+async function resolveReleaseForChannel(channel: UpdateChannel): Promise<GithubRelease> {
+  const base = `https://api.github.com/repos/${UPDATE_REPO_OWNER}/${UPDATE_REPO_NAME}`;
+  if (channel === "stable") {
+    return fetchJson<GithubRelease>(`${base}/releases/latest`);
+  }
+
+  const all = await fetchJson<GithubRelease[]>(`${base}/releases?per_page=20`);
+  const beta = (all || []).find((r) => !r.draft && r.prerelease);
+  if (!beta) {
+    throw new Error("No beta pre-release found for selected channel");
+  }
+  return beta;
+}
+
+async function validateChannelArtifacts(channel: UpdateChannel) {
+  const release = await resolveReleaseForChannel(channel);
+  const assets = hasExpectedAssets(release.assets || []);
+  if (!assets.hasLatestYml || !assets.hasInstaller || !assets.hasBlockMap) {
+    const missing = [
+      !assets.hasLatestYml ? "latest.yml" : null,
+      !assets.hasInstaller ? "installer .exe" : null,
+      !assets.hasBlockMap ? "installer blockmap" : null
+    ]
+      .filter(Boolean)
+      .join(", ");
+    throw new Error(
+      `Release artifact mismatch for ${channel} channel (tag ${release.tag_name}). Missing: ${missing}.`
+    );
+  }
+
+  return {
+    tag: release.tag_name,
+    url: release.html_url || "",
+    prerelease: !!release.prerelease
+  };
 }
 
 export function initUpdater(win: BrowserWindow) {
@@ -144,6 +216,21 @@ export async function checkForUpdates() {
     });
     return false;
   }
+  try {
+    const checked = await validateChannelArtifacts(updateChannel);
+    setState({
+      status: "checking",
+      message: `Checking ${updateChannel} channel (tag ${checked.tag})...`,
+      progressPercent: undefined
+    });
+  } catch (err: any) {
+    setState({
+      status: "error",
+      message: String(err?.message ?? err),
+      progressPercent: undefined
+    });
+    return false;
+  }
   await autoUpdater.checkForUpdates();
   return true;
 }
@@ -153,6 +240,16 @@ export async function downloadUpdate() {
     setState({
       status: "idle",
       message: "Update downloads are disabled in development builds.",
+      progressPercent: undefined
+    });
+    return false;
+  }
+  try {
+    await validateChannelArtifacts(updateChannel);
+  } catch (err: any) {
+    setState({
+      status: "error",
+      message: String(err?.message ?? err),
       progressPercent: undefined
     });
     return false;
