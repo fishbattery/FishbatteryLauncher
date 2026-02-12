@@ -38,7 +38,10 @@ const btnStopActive = $("btnStopActive");
 const btnClearLogs = $("btnClearLogs");
 const btnAnalyzeLogs = $("btnAnalyzeLogs");
 const btnApplyDiagnosisFix = $("btnApplyDiagnosisFix") as HTMLButtonElement;
+const btnToggleDiagnosisDetails = $("btnToggleDiagnosisDetails") as HTMLButtonElement;
+const btnCopyDiagnosisReport = $("btnCopyDiagnosisReport") as HTMLButtonElement;
 const launchDiagnosis = $("launchDiagnosis");
+const launchDiagnosisDetails = $("launchDiagnosisDetails");
 
 // Settings nav + panels
 const settingsTabGeneral = $("settingsTabGeneral");
@@ -114,6 +117,7 @@ let editInstanceId: string | null = null;
 let editServerId: string | null = null;
 let launchLogBuffer: string[] = [];
 let latestDiagnosis: any = null;
+let diagnosisDetailsOpen = false;
 
 type UpdaterUiState = {
   status: "idle" | "checking" | "update-available" | "up-to-date" | "downloading" | "downloaded" | "error";
@@ -287,11 +291,39 @@ function setStatus(text: string) {
   statusText.textContent = text || "";
 }
 
+function findDiagnosisEvidence(diag: any, lines: string[]) {
+  const recent = (lines || []).slice(-200);
+  const patterns: Record<string, string[]> = {
+    "missing-fabric-loader": ["fabric", "no such file", "install incomplete"],
+    "duplicate-mods": ["duplicate", "duplicatemodsfoundexception"],
+    "wrong-java-version": ["unsupportedclassversionerror", "class file version", "requires java"],
+    "mod-mismatch": ["modresolutionexception", "depends on", "requires minecraft", "incompatible"]
+  };
+  const want = patterns[String(diag?.code || "")] || [];
+  if (!want.length) return null;
+
+  for (const line of recent.reverse()) {
+    const lower = String(line || "").toLowerCase();
+    if (want.some((p) => lower.includes(p))) return line;
+  }
+  return null;
+}
+
+function redactSensitive(text: string) {
+  return String(text || "")
+    .replace(/\bgho_[A-Za-z0-9_]+\b/g, "gho_[REDACTED]")
+    .replace(/\bghp_[A-Za-z0-9_]+\b/g, "ghp_[REDACTED]")
+    .replace(/\baccess[_-]?token[\"'=: ]+[A-Za-z0-9._-]+/gi, "access_token=[REDACTED]")
+    .replace(/\bbearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]");
+}
+
 function renderLaunchDiagnosis(diag: any | null) {
   latestDiagnosis = diag;
   if (!diag) {
     launchDiagnosis.style.display = "none";
     launchDiagnosis.textContent = "";
+    launchDiagnosisDetails.style.display = "none";
+    launchDiagnosisDetails.textContent = "";
     btnApplyDiagnosisFix.disabled = true;
     return;
   }
@@ -304,6 +336,17 @@ function renderLaunchDiagnosis(diag: any | null) {
   launchDiagnosis.textContent = lines.join("\n");
   launchDiagnosis.style.display = "";
   btnApplyDiagnosisFix.disabled = !diag.canAutoFix || !diag.fixAction || diag.fixAction === "none";
+
+  const evidence = findDiagnosisEvidence(diag, launchLogBuffer);
+  const detailLines = [
+    `Code: ${diag.code}`,
+    `Severity: ${diag.severity}`,
+    `Auto fix: ${diag.canAutoFix ? diag.fixAction : "none"}`,
+    evidence ? `Evidence: ${evidence}` : "Evidence: no direct signature line captured"
+  ];
+  launchDiagnosisDetails.textContent = detailLines.join("\n");
+  launchDiagnosisDetails.style.display = diagnosisDetailsOpen ? "" : "none";
+  btnToggleDiagnosisDetails.textContent = diagnosisDetailsOpen ? "Hide details" : "Details";
 }
 
 async function runLaunchDiagnosis(instanceId: string | null) {
@@ -2029,6 +2072,50 @@ btnApplyDiagnosisFix.onclick = () =>
     const result = await window.api.launchApplyFix(active, latestDiagnosis.fixAction);
     appendLog(`[diagnostics] ${result.message}`);
     await runLaunchDiagnosis(active);
+  });
+
+btnToggleDiagnosisDetails.onclick = () => {
+  diagnosisDetailsOpen = !diagnosisDetailsOpen;
+  if (!latestDiagnosis) {
+    launchDiagnosisDetails.style.display = "none";
+    return;
+  }
+  renderLaunchDiagnosis(latestDiagnosis);
+};
+
+btnCopyDiagnosisReport.onclick = () =>
+  guarded(async () => {
+    const active = state.instances?.activeInstanceId ?? null;
+    const diag = latestDiagnosis;
+    const lines = launchLogBuffer.slice(-120);
+    const report = [
+      "# Fishbattery Diagnostic Report",
+      `Generated: ${new Date().toISOString()}`,
+      `Instance: ${String(active || "none")}`,
+      `Diagnosis code: ${String(diag?.code || "none")}`,
+      `Severity: ${String(diag?.severity || "unknown")}`,
+      `Summary: ${String(diag?.summary || "No diagnosis available")}`,
+      `Fix action: ${String(diag?.fixAction || "none")}`,
+      "",
+      "## Details",
+      ...((diag?.details || []).map((x: string) => `- ${x}`) || []),
+      "",
+      "## Recommended Actions",
+      ...((diag?.recommendedActions || []).map((x: string) => `- ${x}`) || []),
+      "",
+      "## Recent Logs",
+      "```text",
+      ...lines,
+      "```"
+    ].join("\n");
+
+    const safe = redactSensitive(report);
+    try {
+      await navigator.clipboard.writeText(safe);
+      appendLog("[diagnostics] Copied redacted diagnostic report to clipboard.");
+    } catch (err: any) {
+      appendLog(`[diagnostics] Copy failed: ${String(err?.message ?? err)}`);
+    }
   });
 
 btnOptimizeInstance.onclick = () => guarded(async () => optimizeActiveModalInstance());

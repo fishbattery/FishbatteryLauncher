@@ -370,6 +370,17 @@ pre{
   font-size: 12px;
 }
 
+.launchDiagnosisDetails{
+  margin: 8px 12px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.02);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
 /* Modal */
 .modalBackdrop{
   position: fixed;
