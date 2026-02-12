@@ -31,6 +31,13 @@ import { checkInstanceLockfileDrift, generateInstanceLockfile } from "./instance
 import { installModrinthModpack, searchModrinthModpacks } from "./modrinthPacks";
 import { importPackArchive, type ProviderHint } from "./packArchiveImport";
 import { searchProviderPacks, type ExternalProvider } from "./providerPacks";
+import {
+  clearInstanceIcon,
+  getInstanceIconDataUrl,
+  setInstanceIconFallback,
+  setInstanceIconFromFile,
+  setInstanceIconFromUrl
+} from "./instanceIcons";
 import { buildOptimizerPreview, applyOptimizer, restoreOptimizerDefaults } from "./optimizer";
 import { listBenchmarks, runBenchmark } from "./benchmark";
 import { fixDuplicateMods, validateInstanceMods } from "./modValidation";
@@ -134,6 +141,46 @@ export function registerIpc() {
 
     const imported = await importInstanceFromZip(picked.filePaths[0]);
     return { ok: true as const, canceled: false as const, ...imported };
+  });
+
+  ipcMain.handle("instances:pickIcon", async (e) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const openOpts = {
+      title: "Choose Instance Icon",
+      properties: ["openFile"] as ("openFile")[],
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }]
+    };
+    const picked = owner ? await dialog.showOpenDialog(owner, openOpts) : await dialog.showOpenDialog(openOpts);
+    if (picked.canceled || !picked.filePaths?.length) return null;
+    return picked.filePaths[0];
+  });
+
+  ipcMain.handle("instances:setIconFromFile", async (_e, instanceId: string, filePath: string) => {
+    if (!instanceId) throw new Error("instances:setIconFromFile: instanceId missing");
+    if (!filePath) throw new Error("instances:setIconFromFile: filePath missing");
+    return setInstanceIconFromFile(instanceId, filePath);
+  });
+
+  ipcMain.handle("instances:setIconFromUrl", async (_e, instanceId: string, url: string) => {
+    if (!instanceId) throw new Error("instances:setIconFromUrl: instanceId missing");
+    if (!url) throw new Error("instances:setIconFromUrl: url missing");
+    return setInstanceIconFromUrl(instanceId, url);
+  });
+
+  ipcMain.handle("instances:setIconFallback", async (_e, instanceId: string, label: string, theme?: "green" | "blue") => {
+    if (!instanceId) throw new Error("instances:setIconFallback: instanceId missing");
+    return setInstanceIconFallback(instanceId, label || "FB", theme || "green");
+  });
+
+  ipcMain.handle("instances:getIcon", async (_e, instanceId: string) => {
+    if (!instanceId) throw new Error("instances:getIcon: instanceId missing");
+    return getInstanceIconDataUrl(instanceId);
+  });
+
+  ipcMain.handle("instances:clearIcon", async (_e, instanceId: string) => {
+    if (!instanceId) throw new Error("instances:clearIcon: instanceId missing");
+    clearInstanceIcon(instanceId);
+    return true;
   });
 
   ipcMain.handle("modrinthPacks:search", async (_e, query: string, limit?: number) => {

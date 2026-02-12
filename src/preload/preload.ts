@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld("api", {
   instancesUpdate: (id: string, patch: any) => ipcRenderer.invoke("instances:update", id, patch),
   instancesRemove: (id: string) => ipcRenderer.invoke("instances:remove", id),
   instancesDuplicate: (id: string) => ipcRenderer.invoke("instances:duplicate", id),
+  instancesPickIcon: () => ipcRenderer.invoke("instances:pickIcon"),
+  instancesSetIconFromFile: (id: string, filePath: string) => ipcRenderer.invoke("instances:setIconFromFile", id, filePath),
+  instancesSetIconFromUrl: (id: string, url: string) => ipcRenderer.invoke("instances:setIconFromUrl", id, url),
+  instancesSetIconFallback: (id: string, label: string, theme?: "green" | "blue") =>
+    ipcRenderer.invoke("instances:setIconFallback", id, label, theme),
+  instancesGetIcon: (id: string) => ipcRenderer.invoke("instances:getIcon", id),
+  instancesClearIcon: (id: string) => ipcRenderer.invoke("instances:clearIcon", id),
   instancesOpenFolder: (id: string) => ipcRenderer.invoke("instances:openFolder", id),
   instancesExport: (id: string) => ipcRenderer.invoke("instances:export", id),
   instancesImport: () => ipcRenderer.invoke("instances:import"),

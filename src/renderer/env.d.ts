@@ -16,6 +16,12 @@ declare global {
       instancesUpdate: (id: string, patch: any) => Promise<any>;
       instancesRemove: (id: string) => Promise<any>;
       instancesDuplicate: (id: string) => Promise<any>;
+      instancesPickIcon: () => Promise<string | null>;
+      instancesSetIconFromFile: (id: string, filePath: string) => Promise<string>;
+      instancesSetIconFromUrl: (id: string, url: string) => Promise<string>;
+      instancesSetIconFallback: (id: string, label: string, theme?: "green" | "blue") => Promise<string>;
+      instancesGetIcon: (id: string) => Promise<string | null>;
+      instancesClearIcon: (id: string) => Promise<boolean>;
       instancesOpenFolder: (id: string) => Promise<string>;
       instancesExport: (id: string) => Promise<
         | { ok: true; canceled: false; path: string }
@@ -78,6 +84,7 @@ declare global {
           description: string;
           mcVersion: string;
           loader: string;
+          iconUrl?: string | null;
           tags?: string[];
         }>;
       }>;

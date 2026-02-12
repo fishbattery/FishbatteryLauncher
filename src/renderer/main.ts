@@ -129,6 +129,9 @@ const modrinthSearchInput = $("modrinthSearchInput") as HTMLInputElement;
 const btnModrinthSearch = $("btnModrinthSearch");
 const modrinthResultsLabel = $("modrinthResultsLabel");
 const modrinthSearchResults = $("modrinthSearchResults");
+const btnPickInstanceIcon = $("btnPickInstanceIcon");
+const btnClearInstanceIcon = $("btnClearInstanceIcon");
+const instanceIconHint = $("instanceIconHint");
 const btnCreateImportNow = $("btnCreateImportNow");
 const createCustomFields = $("createCustomFields");
 const createFilterReleases = $("createFilterReleases");
@@ -173,8 +176,15 @@ let promptedInstallVersion: string | null = null;
 let createSource: "custom" | "import" | "modrinth" | "curseforge" | "technic" | "atlauncher" | "ftb" = "custom";
 let createIncludeReleases = true;
 let createIncludeSnapshots = false;
-let selectedModrinthPack: { projectId: string; title: string; latestVersionId: string | null } | null = null;
-let selectedProviderPack: { id: string; name: string } | null = null;
+let selectedModrinthPack: {
+  projectId: string;
+  title: string;
+  latestVersionId: string | null;
+  iconUrl: string | null;
+} | null = null;
+let selectedProviderPack: { id: string; name: string; iconUrl?: string | null } | null = null;
+let selectedCreateIconPath: string | null = null;
+let clearExistingIconOnSave = false;
 
 // ---------------- Settings ----------------
 type InstancePresetId = "none" | "max-fps" | "shader-friendly" | "distant-horizons-worldgen";
@@ -1896,6 +1906,16 @@ async function renderInstances() {
   const items = filteredInstances();
   const active = state.instances?.activeInstanceId ?? null;
   instancesGrid.innerHTML = "";
+  const icons = new Map<string, string | null>();
+  await Promise.all(
+    items.map(async (i: any) => {
+      try {
+        icons.set(i.id, await window.api.instancesGetIcon(i.id));
+      } catch {
+        icons.set(i.id, null);
+      }
+    })
+  );
 
   for (const i of items) {
     const card = document.createElement("div");
@@ -1909,6 +1929,17 @@ async function renderInstances() {
 
     const thumb = document.createElement("div");
     thumb.className = "thumb";
+    const iconData = icons.get(i.id) || null;
+    if (iconData) {
+      const icon = document.createElement("img");
+      icon.src = iconData;
+      icon.alt = `${i.name ?? "Instance"} icon`;
+      icon.style.width = "100%";
+      icon.style.height = "100%";
+      icon.style.objectFit = "cover";
+      icon.style.borderRadius = "14px";
+      thumb.appendChild(icon);
+    }
 
     const meta = document.createElement("div");
     meta.className = "cardMeta";
@@ -1961,6 +1992,9 @@ async function renderInstances() {
       createSourceTechnic.toggleAttribute("disabled", true);
       createSourceATLauncher.toggleAttribute("disabled", true);
       createSourceFTB.toggleAttribute("disabled", true);
+      selectedCreateIconPath = null;
+      clearExistingIconOnSave = false;
+      instanceIconHint.textContent = "Keep existing icon unless you pick a new one.";
       fillInstancePresetDropdown(i.instancePreset ?? "none");
       await fillInstanceAccountDropdown(i.accountId ?? null);
       await renderServerEntries(i.id);
@@ -2223,7 +2257,8 @@ async function runModrinthSearch() {
       selectedModrinthPack = {
         projectId: h.projectId,
         title: h.title,
-        latestVersionId: h.latestVersionId
+        latestVersionId: h.latestVersionId,
+        iconUrl: h.iconUrl
       };
       void runModrinthSearch();
     };
@@ -2255,15 +2290,25 @@ async function runProviderSearch() {
     const row = document.createElement("div");
     row.className = "modrinthResult";
 
-    const icon = document.createElement("div");
-    icon.className = "providerIcon";
-    icon.textContent = String(h.name || "?")
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((x) => x[0]?.toUpperCase() || "")
-      .join("");
-    row.appendChild(icon);
+    if (h.iconUrl) {
+      const img = document.createElement("img");
+      img.src = h.iconUrl;
+      img.onerror = () => {
+        img.removeAttribute("src");
+        img.style.display = "none";
+      };
+      row.appendChild(img);
+    } else {
+      const icon = document.createElement("div");
+      icon.className = "providerIcon";
+      icon.textContent = String(h.name || "?")
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((x) => x[0]?.toUpperCase() || "")
+        .join("");
+      row.appendChild(icon);
+    }
 
     const left = document.createElement("div");
     left.style.display = "flex";
@@ -2299,7 +2344,7 @@ async function runProviderSearch() {
     const selected = selectedProviderPack?.id === h.id;
     btn.textContent = selected ? "Selected" : "Select";
     btn.onclick = () => {
-      selectedProviderPack = { id: h.id, name: h.name };
+      selectedProviderPack = { id: h.id, name: h.name, iconUrl: h.iconUrl || null };
       void runProviderSearch();
     };
     row.appendChild(btn);
@@ -2400,6 +2445,13 @@ btnCreateImportNow.onclick = () =>
   guarded(async () => {
     const res = await window.api.instancesImport();
     if (!res.ok || res.canceled) return;
+    if (selectedCreateIconPath && res.instance?.id) {
+      try {
+        await window.api.instancesSetIconFromFile(res.instance.id, selectedCreateIconPath);
+      } catch (err: any) {
+        appendLog(`[icon] Failed applying selected icon: ${String(err?.message ?? err)}`);
+      }
+    }
     state.instances = await window.api.instancesList();
     await renderInstances();
     appendLog(`[instance] Imported "${res.instance?.name ?? "instance"}"`);
@@ -2421,6 +2473,27 @@ btnProviderImportArchive.onclick = () =>
       }
     });
     if (!res.ok || res.canceled) return;
+    if (res.result?.instance?.id) {
+      if (selectedCreateIconPath) {
+        try {
+          await window.api.instancesSetIconFromFile(res.result.instance.id, selectedCreateIconPath);
+        } catch (err: any) {
+          appendLog(`[icon] Failed applying selected icon: ${String(err?.message ?? err)}`);
+        }
+      } else if (selectedProviderPack?.iconUrl) {
+        try {
+          await window.api.instancesSetIconFromUrl(res.result.instance.id, selectedProviderPack.iconUrl);
+        } catch {
+          await window.api.instancesSetIconFallback(res.result.instance.id, selectedProviderPack.name || "Pack", "blue");
+        }
+      } else {
+        await window.api.instancesSetIconFallback(
+          res.result.instance.id,
+          selectedProviderPack?.name || res.result.instance?.name || "Pack",
+          "blue"
+        );
+      }
+    }
     state.instances = await window.api.instancesList();
     await renderInstances();
     appendLog(
@@ -2428,6 +2501,19 @@ btnProviderImportArchive.onclick = () =>
     );
     closeModal();
   });
+btnPickInstanceIcon.onclick = () =>
+  guarded(async () => {
+    const picked = await window.api.instancesPickIcon();
+    if (!picked) return;
+    selectedCreateIconPath = picked;
+    clearExistingIconOnSave = false;
+    instanceIconHint.textContent = `Selected: ${picked.split(/[/\\\\]/).pop() || picked}`;
+  });
+btnClearInstanceIcon.onclick = () => {
+  selectedCreateIconPath = null;
+  clearExistingIconOnSave = true;
+  instanceIconHint.textContent = "Icon will be cleared on save.";
+};
 
 btnCreate.onclick = async () => {
   modalMode = "create";
@@ -2447,6 +2533,9 @@ btnCreate.onclick = async () => {
   setCreateSource("custom");
   selectedModrinthPack = null;
   selectedProviderPack = null;
+  selectedCreateIconPath = null;
+  clearExistingIconOnSave = false;
+  instanceIconHint.textContent = "No custom icon selected.";
   modrinthSearchInput.value = "";
   modrinthSearchResults.innerHTML = "";
   providerSearchInput.value = "";
@@ -2493,6 +2582,13 @@ modalCreate.onclick = () =>
       if (createSource === "import") {
         const res = await window.api.instancesImport();
         if (!res.ok || res.canceled) return;
+        if (selectedCreateIconPath && res.instance?.id) {
+          try {
+            await window.api.instancesSetIconFromFile(res.instance.id, selectedCreateIconPath);
+          } catch (err: any) {
+            appendLog(`[icon] Failed applying selected icon: ${String(err?.message ?? err)}`);
+          }
+        }
         state.instances = await window.api.instancesList();
         await renderInstances();
         appendLog(`[instance] Imported "${res.instance?.name ?? "instance"}"`);
@@ -2518,6 +2614,21 @@ modalCreate.onclick = () =>
             }
           });
           if (!res.ok || res.canceled) return;
+          if (selectedCreateIconPath && res.result?.instance?.id) {
+            try {
+              await window.api.instancesSetIconFromFile(res.result.instance.id, selectedCreateIconPath);
+            } catch (err: any) {
+              appendLog(`[icon] Failed applying selected icon: ${String(err?.message ?? err)}`);
+            }
+          } else if (selectedProviderPack?.iconUrl && res.result?.instance?.id) {
+            try {
+              await window.api.instancesSetIconFromUrl(res.result.instance.id, selectedProviderPack.iconUrl);
+            } catch {
+              await window.api.instancesSetIconFallback(res.result.instance.id, selectedProviderPack.name || "Pack", "blue");
+            }
+          } else if (res.result?.instance?.id) {
+            await window.api.instancesSetIconFallback(res.result.instance.id, res.result.instance?.name || "Pack", "blue");
+          }
           setStatus("");
           state.instances = await window.api.instancesList();
           await renderInstances();
@@ -2539,6 +2650,24 @@ modalCreate.onclick = () =>
           accountId: instanceAccount.value || null,
           memoryMb: Number(newMem.value || 6144)
         });
+        if (res.instance?.id) {
+          if (selectedCreateIconPath) {
+            try {
+              await window.api.instancesSetIconFromFile(res.instance.id, selectedCreateIconPath);
+            } catch (err: any) {
+              appendLog(`[icon] Failed applying selected icon: ${String(err?.message ?? err)}`);
+            }
+          } else if (selectedModrinthPack.iconUrl) {
+            try {
+              await window.api.instancesSetIconFromUrl(res.instance.id, selectedModrinthPack.iconUrl);
+            } catch (err: any) {
+              appendLog(`[icon] Failed downloading pack icon: ${String(err?.message ?? err)}`);
+              await window.api.instancesSetIconFallback(res.instance.id, selectedModrinthPack.title, "blue");
+            }
+          } else {
+            await window.api.instancesSetIconFallback(res.instance.id, selectedModrinthPack.title, "blue");
+          }
+        }
         setStatus("");
         state.instances = await window.api.instancesList();
         await renderInstances();
@@ -2581,6 +2710,16 @@ modalCreate.onclick = () =>
 
       setStatus("Creating instance…");
       await window.api.instancesCreate(cfg);
+
+      if (selectedCreateIconPath) {
+        try {
+          await window.api.instancesSetIconFromFile(id, selectedCreateIconPath);
+        } catch (err: any) {
+          appendLog(`[icon] Failed applying selected icon: ${String(err?.message ?? err)}`);
+        }
+      } else {
+        await window.api.instancesSetIconFallback(id, cfg.name || "Instance", "green");
+      }
 
       if (loader === "fabric" && cfg.fabricLoaderVersion) {
         setStatus("Installing Fabric…");
@@ -2630,6 +2769,16 @@ modalCreate.onclick = () =>
         accountId: instanceAccount.value || null,
         instancePreset: selectedPreset
       });
+
+      if (selectedCreateIconPath) {
+        try {
+          await window.api.instancesSetIconFromFile(editInstanceId, selectedCreateIconPath);
+        } catch (err: any) {
+          appendLog(`[icon] Failed applying selected icon: ${String(err?.message ?? err)}`);
+        }
+      } else if (clearExistingIconOnSave) {
+        await window.api.instancesClearIcon(editInstanceId);
+      }
 
       if (nextLoader === "fabric" && nextFabricLoaderVersion) {
         setStatus("Installing Fabric…");
