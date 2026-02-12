@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Gudmundur Magnus Johannsson
 // Licensed under GPL v3
 
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron/renderer";
 
 contextBridge.exposeInMainWorld("api", {
   versionsList: () => ipcRenderer.invoke("versions:list"),
@@ -75,11 +75,11 @@ contextBridge.exposeInMainWorld("api", {
 
   onLaunchLog: (cb: (line: string) => void) => {
     ipcRenderer.removeAllListeners("launch:log");
-    ipcRenderer.on("launch:log", (_e, line) => cb(line));
+    ipcRenderer.on("launch:log", (_e: IpcRendererEvent, line: string) => cb(line));
   },
 
   onUpdaterEvent: (cb: (evt: any) => void) => {
     ipcRenderer.removeAllListeners("updater:event");
-    ipcRenderer.on("updater:event", (_e, evt) => cb(evt));
+    ipcRenderer.on("updater:event", (_e: IpcRendererEvent, evt: any) => cb(evt));
   }
 });

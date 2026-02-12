@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import AdmZip from "adm-zip";
-import { app } from "electron";
+import { app } from "electron/main";
 import { getAccountsPath, getDataRoot, getInstancesRoot, getUserDataRoot } from "./paths";
 
 type JsonValue = Record<string, any> | any[] | string | number | boolean | null;

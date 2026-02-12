@@ -75,17 +75,20 @@ export function registerIpc() {
     const inst = db.instances.find((x) => x.id === id);
     if (!inst) throw new Error("instances:export: instance not found");
 
-    const owner = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+    const owner = BrowserWindow.fromWebContents(e.sender);
     const defaultPath = path.join(
       app.getPath("downloads"),
       `${String(inst.name || "instance").replace(/[<>:\"/\\|?*\x00-\x1F]/g, "_")}.zip`
     );
 
-    const picked = await dialog.showSaveDialog(owner, {
+    const saveOpts = {
       title: "Export Instance",
       defaultPath,
       filters: [{ name: "Zip archive", extensions: ["zip"] }]
-    });
+    };
+    const picked = owner
+      ? await dialog.showSaveDialog(owner, saveOpts)
+      : await dialog.showSaveDialog(saveOpts);
     if (picked.canceled || !picked.filePath) return { ok: false as const, canceled: true as const };
 
     const out = exportInstanceToZip(id, picked.filePath);
@@ -93,12 +96,15 @@ export function registerIpc() {
   });
 
   ipcMain.handle("instances:import", async (e) => {
-    const owner = BrowserWindow.fromWebContents(e.sender) ?? undefined;
-    const picked = await dialog.showOpenDialog(owner, {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const openOpts = {
       title: "Import Instance",
-      properties: ["openFile"],
+      properties: ["openFile"] as ("openFile")[],
       filters: [{ name: "Zip archive", extensions: ["zip"] }]
-    });
+    };
+    const picked = owner
+      ? await dialog.showOpenDialog(owner, openOpts)
+      : await dialog.showOpenDialog(openOpts);
 
     if (picked.canceled || !picked.filePaths?.length) {
       return { ok: false as const, canceled: true as const };
@@ -255,13 +261,16 @@ export function registerIpc() {
   ipcMain.handle("diagnostics:export", async (e) => {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const defaultPath = path.join(app.getPath("downloads"), `fishbattery-diagnostics-${stamp}.zip`);
-    const owner = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+    const owner = BrowserWindow.fromWebContents(e.sender);
 
-    const picked = await dialog.showSaveDialog(owner, {
+    const saveOpts = {
       title: "Export Diagnostics",
       defaultPath,
       filters: [{ name: "Zip archive", extensions: ["zip"] }]
-    });
+    };
+    const picked = owner
+      ? await dialog.showSaveDialog(owner, saveOpts)
+      : await dialog.showSaveDialog(saveOpts);
 
     if (picked.canceled || !picked.filePath) {
       return { ok: false, canceled: true as const };
