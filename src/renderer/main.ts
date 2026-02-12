@@ -90,6 +90,22 @@ let busy = false;
 let modalMode: "create" | "edit" = "create";
 let editInstanceId: string | null = null;
 
+type UpdaterUiState = {
+  status: "idle" | "checking" | "update-available" | "up-to-date" | "downloading" | "downloaded" | "error";
+  currentVersion: string;
+  latestVersion?: string;
+  progressPercent?: number;
+  message?: string;
+  updatedAt: number;
+};
+
+let updaterState: UpdaterUiState = {
+  status: "idle",
+  currentVersion: "unknown",
+  message: "Updates not checked yet.",
+  updatedAt: Date.now()
+};
+
 // ---------------- Settings ----------------
 type AppSettings = {
   theme: "ocean" | "dark" | "oled";
@@ -391,6 +407,19 @@ function makeTextarea(value: string, placeholder: string, onChange: (v: string) 
   return ta;
 }
 
+function updaterStatusText(s: UpdaterUiState) {
+  const msg = s.message?.trim();
+  if (msg) return msg;
+
+  if (s.status === "idle") return "Updates not checked yet.";
+  if (s.status === "checking") return "Checking for updates...";
+  if (s.status === "update-available") return `Update available: v${s.latestVersion ?? "unknown"}`;
+  if (s.status === "up-to-date") return "You are up to date.";
+  if (s.status === "downloading") return `Downloading update... ${Number(s.progressPercent ?? 0).toFixed(1)}%`;
+  if (s.status === "downloaded") return `Update downloaded: v${s.latestVersion ?? "unknown"}`;
+  return "Updater error.";
+}
+
 function renderSettingsPanels() {
   const s = getSettings();
 
@@ -452,15 +481,60 @@ function renderSettingsPanels() {
     settingsPanelGeneral.appendChild(row);
   }
 
-  // Install (placeholder)
+  // Install (updater)
   clearPanel(settingsPanelInstall);
   settingsPanelInstall.appendChild(makeH3("Install"));
   {
-    const info = document.createElement("div");
-    info.className = "muted";
-    info.style.fontSize = "13px";
-    info.textContent = "This panel is ready — add install paths / cache limits / auto-clean later.";
-    settingsPanelInstall.appendChild(info);
+    const v = document.createElement("div");
+    v.className = "muted";
+    v.style.fontSize = "13px";
+    v.style.marginBottom = "10px";
+    v.textContent = `Current version: v${updaterState.currentVersion}`;
+    settingsPanelInstall.appendChild(v);
+
+    const status = document.createElement("div");
+    status.className = "muted";
+    status.style.fontSize = "13px";
+    status.style.marginBottom = "12px";
+    status.textContent = updaterStatusText(updaterState);
+    settingsPanelInstall.appendChild(status);
+
+    const actions = document.createElement("div");
+    actions.className = "row";
+    actions.style.justifyContent = "flex-start";
+    actions.style.gap = "8px";
+
+    const btnCheck = document.createElement("button");
+    btnCheck.className = "btn";
+    btnCheck.textContent = "Check for updates";
+    btnCheck.disabled = updaterState.status === "checking" || updaterState.status === "downloading";
+    btnCheck.onclick = () =>
+      guarded(async () => {
+        await window.api.updaterCheck();
+      });
+
+    const btnDownload = document.createElement("button");
+    btnDownload.className = "btn";
+    btnDownload.textContent =
+      updaterState.status === "downloading" ? "Downloading..." : "Download update";
+    btnDownload.disabled = updaterState.status !== "update-available";
+    btnDownload.onclick = () =>
+      guarded(async () => {
+        await window.api.updaterDownload();
+      });
+
+    const btnInstall = document.createElement("button");
+    btnInstall.className = "btn btnPrimary";
+    btnInstall.textContent = "Restart and install";
+    btnInstall.disabled = updaterState.status !== "downloaded";
+    btnInstall.onclick = () => {
+      void window.api.updaterInstall();
+    };
+
+    actions.appendChild(btnCheck);
+    actions.appendChild(btnDownload);
+    actions.appendChild(btnInstall);
+    settingsPanelInstall.appendChild(actions);
   }
 
   // Window
@@ -880,6 +954,7 @@ async function refreshAll() {
 
   state.accounts = await window.api.accountsList();
   state.instances = await window.api.instancesList();
+  updaterState = await window.api.updaterGetState();
 
   await renderAccounts();
   await renderInstances();
@@ -1035,6 +1110,13 @@ btnOpenInstanceFolder3.onclick = () =>
   });
 
 window.api.onLaunchLog((line) => appendLog(line));
+window.api.onUpdaterEvent((evt) => {
+  updaterState = evt;
+  if (settingsTabInstall.classList.contains("active")) {
+    renderSettingsPanels();
+  }
+  if (evt?.message) appendLog(`[updater] ${evt.message}`);
+});
 
 // Close account dropdown when clicking outside
 document.addEventListener("click", (e) => {
@@ -1050,3 +1132,4 @@ document.addEventListener("click", (e) => {
 applySettingsToDom(getSettings());
 setSettingsTab("general");
 refreshAll();
+

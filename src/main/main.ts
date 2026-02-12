@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron";
 import path from "node:path";
 import { registerIpc } from "./ipc";
 import { CANONICAL_FOLDER } from "./paths";
+import { initUpdater } from "./updater";
 
 app.setPath("userData", path.join(app.getPath("appData"), CANONICAL_FOLDER));
 
@@ -38,6 +39,7 @@ app.whenReady().then(async () => {
   // IPC handlers (accounts, versions, mods, packs, local uploads, launch)
   registerIpc();
   await createWindow();
+  if (win) initUpdater(win);
 });
 
 app.on("window-all-closed", () => {

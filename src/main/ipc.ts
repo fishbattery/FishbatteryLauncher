@@ -22,6 +22,12 @@ import { installFabricVersion } from "./fabricInstall";
 import { installVanillaVersion } from "./vanillaInstall";
 import { launchInstance, isInstanceRunning, stopInstance } from "./launch";
 import { registerContentIpc } from "./content";
+import {
+  checkForUpdates,
+  downloadUpdate,
+  getUpdaterState,
+  quitAndInstallUpdate
+} from "./updater";
 
 export function registerIpc() {
   // ---------- Instances ----------
@@ -185,6 +191,12 @@ export function registerIpc() {
     if (!instanceId) throw new Error("launch:stop: instanceId missing");
     return stopInstance(instanceId);
   });
+
+  // ---------- Updater ----------
+  ipcMain.handle("updater:getState", async () => getUpdaterState());
+  ipcMain.handle("updater:check", async () => checkForUpdates());
+  ipcMain.handle("updater:download", async () => downloadUpdate());
+  ipcMain.handle("updater:install", async () => quitAndInstallUpdate());
 
   // ---------- Local Content (manual uploads) ----------
   registerContentIpc();

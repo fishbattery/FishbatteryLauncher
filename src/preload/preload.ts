@@ -55,8 +55,18 @@ contextBridge.exposeInMainWorld("api", {
   launchIsRunning: (instanceId: string) => ipcRenderer.invoke("launch:isRunning", instanceId),
   launchStop: (instanceId: string) => ipcRenderer.invoke("launch:stop", instanceId),
 
+  updaterGetState: () => ipcRenderer.invoke("updater:getState"),
+  updaterCheck: () => ipcRenderer.invoke("updater:check"),
+  updaterDownload: () => ipcRenderer.invoke("updater:download"),
+  updaterInstall: () => ipcRenderer.invoke("updater:install"),
+
   onLaunchLog: (cb: (line: string) => void) => {
     ipcRenderer.removeAllListeners("launch:log");
     ipcRenderer.on("launch:log", (_e, line) => cb(line));
+  },
+
+  onUpdaterEvent: (cb: (evt: any) => void) => {
+    ipcRenderer.removeAllListeners("updater:event");
+    ipcRenderer.on("updater:event", (_e, evt) => cb(evt));
   }
 });

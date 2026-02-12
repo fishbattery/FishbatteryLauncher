@@ -69,8 +69,20 @@ declare global {
       launch: (instanceId: string, accountId: string) => Promise<any>;
       launchIsRunning: (instanceId: string) => Promise<boolean>;
       launchStop: (instanceId: string) => Promise<boolean>;
+      updaterGetState: () => Promise<{
+        status: "idle" | "checking" | "update-available" | "up-to-date" | "downloading" | "downloaded" | "error";
+        currentVersion: string;
+        latestVersion?: string;
+        progressPercent?: number;
+        message?: string;
+        updatedAt: number;
+      }>;
+      updaterCheck: () => Promise<boolean>;
+      updaterDownload: () => Promise<boolean>;
+      updaterInstall: () => Promise<boolean>;
 
       onLaunchLog: (cb: (line: string) => void) => void;
+      onUpdaterEvent: (cb: (evt: any) => void) => void;
     };
   }
 }
