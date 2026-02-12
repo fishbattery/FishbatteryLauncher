@@ -108,7 +108,7 @@ declare global {
       launch: (
         instanceId: string,
         accountId: string,
-        runtimePrefs?: { jvmArgs?: string; preLaunch?: string; postExit?: string }
+        runtimePrefs?: { jvmArgs?: string; preLaunch?: string; postExit?: string; serverAddress?: string }
       ) => Promise<any>;
       launchIsRunning: (instanceId: string) => Promise<boolean>;
       launchStop: (instanceId: string) => Promise<boolean>;

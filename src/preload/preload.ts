@@ -71,7 +71,7 @@ contextBridge.exposeInMainWorld("api", {
   launch: (
     instanceId: string,
     accountId: string,
-    runtimePrefs?: { jvmArgs?: string; preLaunch?: string; postExit?: string }
+    runtimePrefs?: { jvmArgs?: string; preLaunch?: string; postExit?: string; serverAddress?: string }
   ) => ipcRenderer.invoke("launch", instanceId, accountId, runtimePrefs),
   launchIsRunning: (instanceId: string) => ipcRenderer.invoke("launch:isRunning", instanceId),
   launchStop: (instanceId: string) => ipcRenderer.invoke("launch:stop", instanceId),

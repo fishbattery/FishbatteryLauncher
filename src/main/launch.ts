@@ -18,6 +18,7 @@ export type LaunchRuntimePrefs = {
   jvmArgs?: string;
   preLaunch?: string;
   postExit?: string;
+  serverAddress?: string;
 };
 
 function ensureDirs(p: string) {
@@ -81,6 +82,18 @@ function splitShellWords(input: string): string[] {
     out.push(m[1] ?? m[2] ?? m[0]);
   }
   return out;
+}
+
+function parseServerAddress(raw: string): { host: string; port?: number } | null {
+  const value = String(raw || "").trim();
+  if (!value) return null;
+  const idx = value.lastIndexOf(":");
+  if (idx > 0 && idx < value.length - 1 && !value.includes("]")) {
+    const host = value.slice(0, idx).trim();
+    const p = Number(value.slice(idx + 1).trim());
+    if (host && Number.isFinite(p) && p > 0 && p <= 65535) return { host, port: p };
+  }
+  return { host: value };
 }
 
 async function runHookCommand(phase: "pre-launch" | "post-exit", command: string, onLog?: (line: string) => void) {
@@ -369,6 +382,20 @@ async function launchResolved(
       versions: getVersionsRoot()
     }
   };
+
+  const targetServer = parseServerAddress(String(runtimePrefs?.serverAddress ?? ""));
+  if (targetServer) {
+    const identifier = `${targetServer.host}${targetServer.port ? `:${targetServer.port}` : ""}`;
+    launchOpts.quickPlay = {
+      // 1.20+ expects quickPlay multiplayer instead of legacy --server/--port flags.
+      type: "multiplayer",
+      identifier
+    };
+    // Keep deprecated fields unset; recent Minecraft ignores them and logs noise.
+    onLog?.(
+      `[launcher] Joining server on launch: ${targetServer.host}${targetServer.port ? `:${targetServer.port}` : ""}`
+    );
+  }
 
   onLog?.(`[launcher] Launch version id: ${launchOpts.version?.number} (type=${launchOpts.version?.type})`);
   onLog?.(`[launcher] root=${launchOpts.root}`);

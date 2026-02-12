@@ -33,6 +33,7 @@ const accountAvatarImg = $("accountAvatarImg") as HTMLImageElement;
 
 const btnCreate = $("btnCreate");
 const btnImport = $("btnImport");
+const btnJoinPreferred = $("btnJoinPreferred");
 const btnPlayActive = $("btnPlayActive");
 const btnStopActive = $("btnStopActive");
 const btnClearLogs = $("btnClearLogs");
@@ -1207,6 +1208,68 @@ async function renderServerEntries(instanceId: string | null) {
   }
 }
 
+async function findPreferredServerTarget() {
+  const instances = state.instances?.instances ?? [];
+  if (!instances.length) return null;
+
+  const activeId = state.instances?.activeInstanceId ?? null;
+  const activeInst = instances.find((x: any) => x.id === activeId) ?? null;
+  if (activeInst) {
+    const s = await window.api.serversList(activeInst.id);
+    const preferred = (s?.servers ?? []).find((x: any) => x.id === s.preferredServerId) ?? null;
+    if (preferred) return { instance: activeInst, server: preferred };
+  }
+
+  for (const inst of instances) {
+    const s = await window.api.serversList(inst.id);
+    const preferred = (s?.servers ?? []).find((x: any) => x.id === s.preferredServerId) ?? null;
+    if (preferred) return { instance: inst, server: preferred };
+  }
+
+  return null;
+}
+
+async function launchForInstance(inst: any, serverAddress?: string) {
+  const accounts = state.accounts?.accounts ?? [];
+  const accountId = inst.accountId || state.accounts?.activeAccountId || (accounts[0]?.id ?? null);
+  if (!accountId) {
+    appendLog("[ui] No account selected.");
+    return;
+  }
+
+  const s = getSettings();
+  const validation = await window.api.modsValidate(inst.id);
+  if (validation.summary === "critical") {
+    const detail = validation.issues
+      .slice(0, 8)
+      .map((x) => `- ${x.title}`)
+      .join("\n");
+    const launchAnyway = confirm(
+      `Critical mod conflicts detected:\n${detail}\n\nUse "Update Mods" or fix duplicates first.\nLaunch anyway?`
+    );
+    if (!launchAnyway) return;
+  } else if (validation.summary === "warnings") {
+    appendLog("[validation] Warnings detected. Open Mods tab for details.");
+  }
+
+  appendLog(
+    serverAddress
+      ? `[server] Launching ${inst.name} for ${serverAddress}...`
+      : `[ui] Launching ${inst.name}...`
+  );
+  renderLaunchDiagnosis(null);
+  const launchRes = await window.api.launch(inst.id, accountId, {
+    jvmArgs: inst.jvmArgsOverride || s.jvmArgs,
+    preLaunch: s.preLaunch,
+    postExit: s.postExit,
+    serverAddress
+  });
+  if (!launchRes?.ok) {
+    const diag = await runLaunchDiagnosis(inst.id);
+    await maybeOfferRollback(inst.id, diag);
+  }
+}
+
 // ---------------- Local content (mods/resourcepacks/shaderpacks uploads) ----------------
 async function renderLocalContent(instanceId: string | null) {
   const can = modalMode === "edit" && !!instanceId;
@@ -1826,7 +1889,26 @@ async function renderInstances() {
       alert(`Instance exported:\n${res.path}`);
     };
 
+    const btnJoin = document.createElement("button");
+    btnJoin.className = "btn";
+    btnJoin.textContent = "Join";
+    btnJoin.onclick = async () => {
+      const s = await window.api.serversList(i.id);
+      const preferred = (s?.servers ?? []).find((x: any) => x.id === s.preferredServerId) ?? null;
+      if (!preferred) {
+        alert("No preferred server set for this instance.");
+        return;
+      }
+      if (state.instances?.activeInstanceId !== i.id) {
+        await window.api.instancesSetActive(i.id);
+        state.instances = await window.api.instancesList();
+        await renderInstances();
+      }
+      await launchForInstance(i, String(preferred.address || "").trim());
+    };
+
     actions.appendChild(btnEdit);
+    actions.appendChild(btnJoin);
     actions.appendChild(btnExport);
     actions.appendChild(btnDelete);
     actions.appendChild(btnUse);
@@ -2012,39 +2094,24 @@ btnPlayActive.onclick = () =>
 
     const inst = (state.instances?.instances ?? []).find((x: any) => x.id === active) ?? null;
     if (!inst) return;
+    await launchForInstance(inst);
+  });
 
-    const accounts = state.accounts?.accounts ?? [];
-    const accountId = inst.accountId || state.accounts?.activeAccountId || (accounts[0]?.id ?? null);
-    if (!accountId) {
-      appendLog("[ui] No account selected.");
+btnJoinPreferred.onclick = () =>
+  guarded(async () => {
+    const target = await findPreferredServerTarget();
+    if (!target) {
+      alert("No preferred server configured on any instance yet.");
       return;
     }
 
-    const s = getSettings();
-    const validation = await window.api.modsValidate(inst.id);
-    if (validation.summary === "critical") {
-      const detail = validation.issues
-        .slice(0, 8)
-        .map((x) => `- ${x.title}`)
-        .join("\n");
-      const launchAnyway = confirm(
-        `Critical mod conflicts detected:\n${detail}\n\nUse "Update Mods" or fix duplicates first.\nLaunch anyway?`
-      );
-      if (!launchAnyway) return;
-    } else if (validation.summary === "warnings") {
-      appendLog("[validation] Warnings detected. Open Mods tab for details.");
+    if (state.instances?.activeInstanceId !== target.instance.id) {
+      await window.api.instancesSetActive(target.instance.id);
+      state.instances = await window.api.instancesList();
+      await renderInstances();
     }
-    appendLog(`[ui] Launching ${inst.name}...`);
-    renderLaunchDiagnosis(null);
-    const launchRes = await window.api.launch(inst.id, accountId, {
-      jvmArgs: inst.jvmArgsOverride || s.jvmArgs,
-      preLaunch: s.preLaunch,
-      postExit: s.postExit
-    });
-    if (!launchRes?.ok) {
-      const diag = await runLaunchDiagnosis(inst.id);
-      await maybeOfferRollback(inst.id, diag);
-    }
+
+    await launchForInstance(target.instance, String(target.server.address || "").trim());
   });
 
 btnStopActive.onclick = () =>
