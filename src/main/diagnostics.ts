@@ -119,6 +119,7 @@ export function exportDiagnosticsZip(outputZipPath: string): string {
   }
 
   addFileIfExists(zip, instancesDbPath, "raw/_instances.json");
+  addFileIfExists(zip, path.join(dataRoot, "preflight-health.json"), "meta/preflight-health.json");
 
   const instanceIds =
     Array.isArray((instancesDb as any)?.instances)

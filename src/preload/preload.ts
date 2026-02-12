@@ -106,6 +106,8 @@ contextBridge.exposeInMainWorld("api", {
   updaterDownload: () => ipcRenderer.invoke("updater:download"),
   updaterInstall: () => ipcRenderer.invoke("updater:install"),
   diagnosticsExport: () => ipcRenderer.invoke("diagnostics:export"),
+  preflightRun: () => ipcRenderer.invoke("preflight:run"),
+  preflightGetLast: () => ipcRenderer.invoke("preflight:getLast"),
 
   onLaunchLog: (cb: (line: string) => void) => {
     ipcRenderer.removeAllListeners("launch:log");

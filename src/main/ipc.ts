@@ -25,6 +25,7 @@ import { launchInstance, isInstanceRunning, stopInstance } from "./launch";
 import type { LaunchRuntimePrefs } from "./launch";
 import { registerContentIpc } from "./content";
 import { exportDiagnosticsZip } from "./diagnostics";
+import { getLastPreflightChecks, runPreflightChecks } from "./preflight";
 import { exportInstanceToZip, importInstanceFromZip } from "./instanceTransfer";
 import { buildOptimizerPreview, applyOptimizer, restoreOptimizerDefaults } from "./optimizer";
 import { listBenchmarks, runBenchmark } from "./benchmark";
@@ -429,6 +430,8 @@ export function registerIpc() {
     const outPath = exportDiagnosticsZip(picked.filePath);
     return { ok: true, canceled: false as const, path: outPath };
   });
+  ipcMain.handle("preflight:run", async () => runPreflightChecks());
+  ipcMain.handle("preflight:getLast", async () => getLastPreflightChecks());
 
   // ---------- Local Content (manual uploads) ----------
   registerContentIpc();

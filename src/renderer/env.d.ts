@@ -154,6 +154,32 @@ declare global {
         | { ok: true; canceled: false; path: string }
         | { ok: false; canceled: true }
       >;
+      preflightRun: () => Promise<{
+        ranAt: number;
+        summary: "healthy" | "warnings" | "critical";
+        checks: Array<{
+          id: string;
+          title: string;
+          severity: "ok" | "warning" | "critical";
+          detail: string;
+          remediation?: string;
+        }>;
+        platform: string;
+        appVersion: string;
+      }>;
+      preflightGetLast: () => Promise<{
+        ranAt: number;
+        summary: "healthy" | "warnings" | "critical";
+        checks: Array<{
+          id: string;
+          title: string;
+          severity: "ok" | "warning" | "critical";
+          detail: string;
+          remediation?: string;
+        }>;
+        platform: string;
+        appVersion: string;
+      } | null>;
       optimizerPreview: (
         profile: "conservative" | "balanced" | "aggressive"
       ) => Promise<{

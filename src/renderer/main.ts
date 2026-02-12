@@ -130,6 +130,7 @@ let updaterState: UpdaterUiState = {
   message: "Updates not checked yet.",
   updatedAt: Date.now()
 };
+let preflightState: any = null;
 let hasAutoCheckedUpdates = false;
 let promptedUpdateVersion: string | null = null;
 let promptedInstallVersion: string | null = null;
@@ -591,6 +592,13 @@ function updaterStatusText(s: UpdaterUiState) {
   return "Updater error.";
 }
 
+function preflightSummaryText(p: any) {
+  if (!p) return "No preflight run yet.";
+  if (p.summary === "healthy") return "Preflight healthy.";
+  if (p.summary === "warnings") return "Preflight completed with warnings.";
+  return "Preflight detected critical issues.";
+}
+
 function allInstancePresetIds(): InstancePresetId[] {
   return ["none", ...Object.keys(INSTANCE_PRESETS)] as InstancePresetId[];
 }
@@ -885,6 +893,83 @@ function renderSettingsPanels() {
     actions.appendChild(btnDownload);
     actions.appendChild(btnInstall);
     settingsPanelInstall.appendChild(actions);
+
+    const preflightCard = document.createElement("div");
+    preflightCard.className = "setRow";
+    preflightCard.style.marginTop = "10px";
+
+    const preLeft = document.createElement("div");
+    preLeft.style.display = "flex";
+    preLeft.style.flexDirection = "column";
+
+    const preTitle = document.createElement("div");
+    preTitle.className = "setLabel";
+    preTitle.textContent = "Startup health check";
+
+    const preSub = document.createElement("div");
+    preSub.className = "setHelp";
+    preSub.textContent = preflightSummaryText(preflightState);
+
+    const preMeta = document.createElement("div");
+    preMeta.className = "setHelp";
+    preMeta.textContent = preflightState?.ranAt
+      ? `Last run: ${new Date(preflightState.ranAt).toLocaleString()}`
+      : "Runs on first launch and can be executed on demand.";
+
+    preLeft.appendChild(preTitle);
+    preLeft.appendChild(preSub);
+    preLeft.appendChild(preMeta);
+
+    const preActions = document.createElement("div");
+    preActions.className = "row";
+    preActions.style.justifyContent = "flex-end";
+
+    const btnRunPreflight = document.createElement("button");
+    btnRunPreflight.className = "btn";
+    btnRunPreflight.textContent = "Run health check";
+    btnRunPreflight.onclick = () =>
+      guarded(async () => {
+        preflightState = await window.api.preflightRun();
+        appendLog(`[preflight] ${preflightSummaryText(preflightState)}`);
+        renderSettingsPanels();
+      });
+
+    preActions.appendChild(btnRunPreflight);
+    preflightCard.appendChild(preLeft);
+    preflightCard.appendChild(preActions);
+    settingsPanelInstall.appendChild(preflightCard);
+
+    if (preflightState?.checks?.length) {
+      for (const c of preflightState.checks) {
+        if (c.severity === "ok") continue;
+        const row = document.createElement("div");
+        row.className = "setRow";
+
+        const left = document.createElement("div");
+        left.style.display = "flex";
+        left.style.flexDirection = "column";
+
+        const t = document.createElement("div");
+        t.className = "setLabel";
+        t.textContent = `${c.title} (${c.severity})`;
+
+        const d = document.createElement("div");
+        d.className = "setHelp";
+        d.textContent = c.detail;
+
+        left.appendChild(t);
+        left.appendChild(d);
+        if (c.remediation) {
+          const r = document.createElement("div");
+          r.className = "setHelp";
+          r.textContent = `Suggested fix: ${c.remediation}`;
+          left.appendChild(r);
+        }
+
+        row.appendChild(left);
+        settingsPanelInstall.appendChild(row);
+      }
+    }
 
     const diagWrap = document.createElement("div");
     diagWrap.className = "row";
@@ -1619,10 +1704,20 @@ async function refreshAll() {
   state.accounts = await window.api.accountsList();
   state.instances = await window.api.instancesList();
   updaterState = await window.api.updaterGetState();
+  preflightState = await window.api.preflightGetLast();
 
   await renderAccounts();
   await renderInstances();
   setStatus("");
+
+  if (!preflightState) {
+    try {
+      preflightState = await window.api.preflightRun();
+      appendLog(`[preflight] ${preflightSummaryText(preflightState)}`);
+    } catch (err: any) {
+      appendLog(`[preflight] Failed: ${String(err?.message ?? err)}`);
+    }
+  }
 
   if (!hasAutoCheckedUpdates) {
     hasAutoCheckedUpdates = true;
