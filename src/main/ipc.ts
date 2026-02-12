@@ -25,8 +25,10 @@ import { registerContentIpc } from "./content";
 import {
   checkForUpdates,
   downloadUpdate,
+  getUpdateChannel,
   getUpdaterState,
-  quitAndInstallUpdate
+  quitAndInstallUpdate,
+  setUpdateChannel
 } from "./updater";
 
 export function registerIpc() {
@@ -194,6 +196,10 @@ export function registerIpc() {
 
   // ---------- Updater ----------
   ipcMain.handle("updater:getState", async () => getUpdaterState());
+  ipcMain.handle("updater:getChannel", async () => getUpdateChannel());
+  ipcMain.handle("updater:setChannel", async (_e, channel: "stable" | "beta") => {
+    return setUpdateChannel(channel);
+  });
   ipcMain.handle("updater:check", async () => checkForUpdates());
   ipcMain.handle("updater:download", async () => downloadUpdate());
   ipcMain.handle("updater:install", async () => quitAndInstallUpdate());

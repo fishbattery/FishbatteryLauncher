@@ -77,6 +77,8 @@ declare global {
         message?: string;
         updatedAt: number;
       }>;
+      updaterGetChannel: () => Promise<"stable" | "beta">;
+      updaterSetChannel: (channel: "stable" | "beta") => Promise<"stable" | "beta">;
       updaterCheck: () => Promise<boolean>;
       updaterDownload: () => Promise<boolean>;
       updaterInstall: () => Promise<boolean>;

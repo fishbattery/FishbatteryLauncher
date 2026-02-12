@@ -110,6 +110,7 @@ let updaterState: UpdaterUiState = {
 type AppSettings = {
   theme: "ocean" | "dark" | "oled";
   blur: boolean; // maps to :root[data-glass="1"]
+  updateChannel: "stable" | "beta";
   showSnapshots: boolean;
   autoUpdateMods: boolean;
   defaultMemoryMb: number;
@@ -126,6 +127,7 @@ const SETTINGS_KEY = "fishbattery.settings";
 const defaultSettings: AppSettings = {
   theme: "ocean",
   blur: true,
+  updateChannel: "stable",
   showSnapshots: false,
   autoUpdateMods: true,
   defaultMemoryMb: 4096,
@@ -485,6 +487,27 @@ function renderSettingsPanels() {
   clearPanel(settingsPanelInstall);
   settingsPanelInstall.appendChild(makeH3("Install"));
   {
+    const { row: channelRow } = makeRow(
+      "Update channel",
+      "Stable is recommended. Beta only for testers and pre-release updates."
+    );
+    const channelSelect = makeSelect(
+      [
+        { value: "stable", label: "Stable (Recommended)" },
+        { value: "beta", label: "Beta (Pre-release)" }
+      ],
+      s.updateChannel,
+      (v) =>
+        guarded(async () => {
+          const channel = v === "beta" ? "beta" : "stable";
+          setSettings({ updateChannel: channel });
+          await window.api.updaterSetChannel(channel);
+          renderSettingsPanels();
+        })
+    );
+    channelRow.appendChild(channelSelect);
+    settingsPanelInstall.appendChild(channelRow);
+
     const v = document.createElement("div");
     v.className = "muted";
     v.style.fontSize = "13px";
@@ -510,6 +533,7 @@ function renderSettingsPanels() {
     btnCheck.disabled = updaterState.status === "checking" || updaterState.status === "downloading";
     btnCheck.onclick = () =>
       guarded(async () => {
+        await window.api.updaterSetChannel(s.updateChannel);
         await window.api.updaterCheck();
       });
 
@@ -952,6 +976,8 @@ async function refreshAll() {
   const manifest = await window.api.versionsList();
   state.versions = manifest?.versions ?? [];
 
+  const s = getSettings();
+  await window.api.updaterSetChannel(s.updateChannel);
   state.accounts = await window.api.accountsList();
   state.instances = await window.api.instancesList();
   updaterState = await window.api.updaterGetState();

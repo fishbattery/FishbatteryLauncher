@@ -19,8 +19,11 @@ export type UpdaterState = {
   updatedAt: number;
 };
 
+export type UpdateChannel = "stable" | "beta";
+
 let initialized = false;
 let mainWindow: BrowserWindow | null = null;
+let updateChannel: UpdateChannel = "stable";
 
 let state: UpdaterState = {
   status: "idle",
@@ -44,6 +47,17 @@ function setState(patch: Partial<UpdaterState>) {
   emitState();
 }
 
+function normalizeChannel(value: string | null | undefined): UpdateChannel {
+  const v = String(value ?? "").toLowerCase();
+  return v === "beta" ? "beta" : "stable";
+}
+
+function applyUpdateChannel(channel: UpdateChannel) {
+  updateChannel = channel;
+  autoUpdater.allowPrerelease = channel === "beta";
+  autoUpdater.channel = channel;
+}
+
 export function initUpdater(win: BrowserWindow) {
   mainWindow = win;
 
@@ -55,11 +69,7 @@ export function initUpdater(win: BrowserWindow) {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  const channel = (process.env.UPDATE_CHANNEL || "stable").toLowerCase();
-  autoUpdater.allowPrerelease = channel !== "stable";
-  if (channel !== "stable") {
-    autoUpdater.channel = channel;
-  }
+  applyUpdateChannel(normalizeChannel(process.env.UPDATE_CHANNEL));
 
   autoUpdater.on("checking-for-update", () => {
     setState({ status: "checking", message: "Checking for updates...", progressPercent: undefined });
@@ -110,6 +120,19 @@ export function initUpdater(win: BrowserWindow) {
 
 export function getUpdaterState(): UpdaterState {
   return state;
+}
+
+export function getUpdateChannel(): UpdateChannel {
+  return updateChannel;
+}
+
+export function setUpdateChannel(channel: UpdateChannel) {
+  applyUpdateChannel(channel);
+  setState({
+    message: `Update channel set to ${channel}.`,
+    progressPercent: undefined
+  });
+  return updateChannel;
 }
 
 export async function checkForUpdates() {

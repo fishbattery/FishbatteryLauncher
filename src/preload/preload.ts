@@ -56,6 +56,8 @@ contextBridge.exposeInMainWorld("api", {
   launchStop: (instanceId: string) => ipcRenderer.invoke("launch:stop", instanceId),
 
   updaterGetState: () => ipcRenderer.invoke("updater:getState"),
+  updaterGetChannel: () => ipcRenderer.invoke("updater:getChannel"),
+  updaterSetChannel: (channel: "stable" | "beta") => ipcRenderer.invoke("updater:setChannel", channel),
   updaterCheck: () => ipcRenderer.invoke("updater:check"),
   updaterDownload: () => ipcRenderer.invoke("updater:download"),
   updaterInstall: () => ipcRenderer.invoke("updater:install"),
