@@ -738,6 +738,65 @@ async function pickAndAdd(kind: "mods" | "resourcepacks" | "shaderpacks") {
   await renderLocalContent(editInstanceId);
 }
 
+// ---------------- Recommended packs (catalog toggles) ----------------
+async function renderRecommendedPacks(instanceId: string | null) {
+  recommendedPacksList.innerHTML = "";
+
+  if (!instanceId) {
+    recommendedPacksList.innerHTML = '<div class="muted" style="font-size:12px">Select an instance first.</div>';
+    return;
+  }
+
+  const res = await window.api.packsList(instanceId);
+  const packs = res?.items ?? [];
+
+  if (!packs.length) {
+    recommendedPacksList.innerHTML = '<div class="muted" style="font-size:12px">No recommended packs configured.</div>';
+    return;
+  }
+
+  for (const p of packs) {
+    const row = document.createElement("div");
+    row.className = "setRow";
+    row.style.marginBottom = "10px";
+
+    const left = document.createElement("div");
+    left.style.display = "flex";
+    left.style.flexDirection = "column";
+
+    const name = document.createElement("div");
+    name.className = "setLabel";
+    name.textContent = `${p.name}${p.required ? " (required)" : ""}`;
+
+    const statusBits = [`${p.kind}`, `status: ${p.status}`];
+    if (p.versionName) statusBits.push(`version: ${p.versionName}`);
+    if (p.error) statusBits.push(`error: ${p.error}`);
+    if (!p.enabled) statusBits.push("disabled");
+
+    const sub = document.createElement("div");
+    sub.className = "setHelp";
+    sub.textContent = statusBits.join(" • ");
+
+    left.appendChild(name);
+    left.appendChild(sub);
+
+    const toggle = document.createElement("button");
+    toggle.className = "btn";
+    toggle.textContent = p.required ? "Required" : p.enabled ? "Disable" : "Enable";
+    toggle.disabled = !!p.required;
+    toggle.onclick = () =>
+      guarded(async () => {
+        await window.api.packsSetEnabled(instanceId, p.id, !p.enabled);
+        await renderRecommendedPacks(instanceId);
+        await renderLocalContent(instanceId);
+      });
+
+    row.appendChild(left);
+    row.appendChild(toggle);
+    recommendedPacksList.appendChild(row);
+  }
+}
+
 // ---------------- Mods list (catalog toggles) ----------------
 async function renderInstanceMods(instanceId: string | null) {
   modalModsList.innerHTML = "";
@@ -1132,6 +1191,18 @@ modalUpdateMods.onclick = () =>
     setStatus("Resolving mods…");
     await window.api.modsRefresh(inst.id, inst.mcVersion);
     await renderInstanceMods(inst.id);
+    await renderLocalContent(inst.id);
+    setStatus("");
+  });
+
+modalUpdatePacks.onclick = () =>
+  guarded(async () => {
+    if (!editInstanceId) return;
+    const inst = (state.instances?.instances ?? []).find((x: any) => x.id === editInstanceId) ?? null;
+    if (!inst) return;
+    setStatus("Resolving packs…");
+    await window.api.packsRefresh(inst.id, inst.mcVersion);
+    await renderRecommendedPacks(inst.id);
     await renderLocalContent(inst.id);
     setStatus("");
   });

@@ -1,6 +1,6 @@
 {
   "name": "fishbattery-launcher",
-  "productName": "Fishbattery launcher",
+  "productName": "fishbattery-launcher",
   "version": "0.2.0-beta.4",
   "private": true,
   "description": "Fishbattery launcher is an underwater-themed Fabric launcher with isolated instances and Modrinth mods.",
