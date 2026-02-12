@@ -71,6 +71,7 @@ const modalPanelPacks = $("modalPanelPacks");
 const modalUpdateMods = $("modalUpdateMods");
 const modalUpdatePacks = $("modalUpdatePacks");
 const modalModsHint = $("modalModsHint");
+const modalCompatGuidance = $("modalCompatGuidance");
 const modalModsList = $("modalModsList");
 const recommendedPacksList = $("recommendedPacksList");
 
@@ -225,6 +226,13 @@ const INSTANCE_PRESETS: Record<Exclude<InstancePresetId, "none">, InstancePreset
     ],
     enablePacks: ["fast-better-grass", "better-leaves"]
   }
+};
+
+const MOD_ALTERNATIVES: Record<string, string[]> = {
+  sodium: ["Try the Shader Friendly path (Iris + Sodium).", "Use Max FPS preset for a known-good baseline."],
+  iris: ["Use Max FPS preset when shaders are not required.", "Try Complementary Unbound/Photon after refreshing packs."],
+  c2me: ["Use Noisium + Starlight as fallback worldgen optimization.", "Use Distant Horizons preset without C2ME."],
+  distanthorizons: ["Use Max FPS preset for stable vanilla-distance rendering.", "Try C2ME + Noisium workflow for worldgen speed."]
 };
 
 function getSettings(): AppSettings {
@@ -978,16 +986,92 @@ async function renderRecommendedPacks(instanceId: string | null) {
   }
 }
 
+function getModCompatibilityReason(mod: any, mcVersion: string) {
+  if (mod?.status === "ok") return null;
+  if (mod?.status === "unavailable") {
+    return `No compatible Fabric build for Minecraft ${mcVersion} on Modrinth.`;
+  }
+  const err = String(mod?.resolved?.error ?? "").trim();
+  if (err) return err;
+  return `Compatibility check failed for Minecraft ${mcVersion}.`;
+}
+
+async function renderCompatibilityGuidance(instanceId: string | null) {
+  modalCompatGuidance.innerHTML = "";
+  if (!instanceId) return;
+
+  const inst = (state.instances?.instances ?? []).find((x: any) => x.id === instanceId) ?? null;
+  if (!inst) return;
+
+  const res = await window.api.modsList(instanceId);
+  const mods = res?.mods ?? [];
+  const byId = new Map<string, any>(mods.map((m: any) => [m.id, m]));
+
+  const heading = document.createElement("div");
+  heading.className = "muted";
+  heading.style.fontSize = "12px";
+  heading.style.marginBottom = "8px";
+  heading.textContent = `Compatibility assistant (${inst.loader}, ${inst.mcVersion})`;
+  modalCompatGuidance.appendChild(heading);
+
+  for (const id of Object.keys(INSTANCE_PRESETS) as Array<Exclude<InstancePresetId, "none">>) {
+    const preset = INSTANCE_PRESETS[id];
+    const needed = preset.enableMods.filter((m) => byId.has(m));
+    const missing = needed.filter((m) => byId.get(m)?.status !== "ok");
+
+    const card = document.createElement("div");
+    card.className = "setRow";
+    card.style.marginBottom = "8px";
+
+    const left = document.createElement("div");
+    left.style.display = "flex";
+    left.style.flexDirection = "column";
+
+    const title = document.createElement("div");
+    title.className = "setLabel";
+    title.textContent = `${preset.name} combo`;
+
+    const sub = document.createElement("div");
+    sub.className = "setHelp";
+    sub.textContent =
+      missing.length === 0
+        ? "Ready for this version."
+        : `Missing compatibility: ${missing.join(", ")}`;
+
+    left.appendChild(title);
+    left.appendChild(sub);
+
+    const btn = document.createElement("button");
+    btn.className = "btn";
+    btn.textContent = "Apply combo";
+    btn.onclick = () =>
+      guarded(async () => {
+        await applyInstancePreset(instanceId, inst.mcVersion, id);
+        await renderCompatibilityGuidance(instanceId);
+        await renderInstanceMods(instanceId);
+        await renderLocalContent(instanceId);
+      });
+
+    card.appendChild(left);
+    card.appendChild(btn);
+    modalCompatGuidance.appendChild(card);
+  }
+}
+
 // ---------------- Mods list (catalog toggles) ----------------
 async function renderInstanceMods(instanceId: string | null) {
   modalModsList.innerHTML = "";
+  modalCompatGuidance.innerHTML = "";
 
   if (!instanceId) {
     modalModsHint.textContent = "Select an instance first.";
     return;
   }
 
-  modalModsHint.textContent = "Mods for this instance:";
+  const inst = (state.instances?.instances ?? []).find((x: any) => x.id === instanceId) ?? null;
+  const mcVersion = inst?.mcVersion ?? "unknown";
+  modalModsHint.textContent = `Mods for this instance (${mcVersion}):`;
+  await renderCompatibilityGuidance(instanceId);
   const res = await window.api.modsList(instanceId);
 
   const mods = res?.mods ?? [];
@@ -1002,11 +1086,18 @@ async function renderInstanceMods(instanceId: string | null) {
 
     const name = document.createElement("div");
     name.className = "setLabel";
-    name.textContent = m.title ?? m.id ?? "Mod";
+    name.textContent = m.name ?? m.id ?? "Mod";
 
     const sub = document.createElement("div");
     sub.className = "setHelp";
-    sub.textContent = `${m.version ?? ""} ${m.enabled ? "" : "(disabled)"}`.trim();
+    const bits = [];
+    bits.push(`status: ${m.status}`);
+    if (!m.enabled) bits.push("disabled");
+    const reason = getModCompatibilityReason(m, mcVersion);
+    if (reason) bits.push(reason);
+    const alts = MOD_ALTERNATIVES[m.id];
+    if (reason && alts?.length) bits.push(`Try: ${alts.join(" | ")}`);
+    sub.textContent = bits.join(" • ");
 
     left.appendChild(name);
     left.appendChild(sub);
