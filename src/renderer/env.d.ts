@@ -17,6 +17,14 @@ declare global {
       instancesRemove: (id: string) => Promise<any>;
       instancesDuplicate: (id: string) => Promise<any>;
       instancesOpenFolder: (id: string) => Promise<string>;
+      instancesExport: (id: string) => Promise<
+        | { ok: true; canceled: false; path: string }
+        | { ok: false; canceled: true }
+      >;
+      instancesImport: () => Promise<
+        | { ok: true; canceled: false; instance: any }
+        | { ok: false; canceled: true }
+      >;
 
       modsList: (instanceId: string) => Promise<any>;
       modsSetEnabled: (instanceId: string, modId: string, enabled: boolean) => Promise<any>;

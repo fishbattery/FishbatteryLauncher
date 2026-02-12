@@ -32,6 +32,7 @@ const accountSub = $("accountSub");
 const accountAvatarImg = $("accountAvatarImg") as HTMLImageElement;
 
 const btnCreate = $("btnCreate");
+const btnImport = $("btnImport");
 const btnPlayActive = $("btnPlayActive");
 const btnStopActive = $("btnStopActive");
 const btnClearLogs = $("btnClearLogs");
@@ -1026,7 +1027,18 @@ async function renderInstances() {
       await renderInstances();
     };
 
+    const btnExport = document.createElement("button");
+    btnExport.className = "btn";
+    btnExport.textContent = "Export";
+    btnExport.onclick = async () => {
+      const res = await window.api.instancesExport(i.id);
+      if (!res.ok || res.canceled) return;
+      appendLog(`[instance] Exported "${i.name}" -> ${res.path}`);
+      alert(`Instance exported:\n${res.path}`);
+    };
+
     actions.appendChild(btnEdit);
+    actions.appendChild(btnExport);
     actions.appendChild(btnDelete);
     actions.appendChild(btnUse);
 
@@ -1120,6 +1132,15 @@ btnCreate.onclick = async () => {
   await fillInstanceAccountDropdown(null);
   openModal();
 };
+
+btnImport.onclick = () =>
+  guarded(async () => {
+    const res = await window.api.instancesImport();
+    if (!res.ok || res.canceled) return;
+    state.instances = await window.api.instancesList();
+    await renderInstances();
+    appendLog(`[instance] Imported "${res.instance?.name ?? "instance"}"`);
+  });
 
 modalClose.onclick = closeModal;
 modalCancel.onclick = closeModal;

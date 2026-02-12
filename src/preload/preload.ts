@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld("api", {
   instancesRemove: (id: string) => ipcRenderer.invoke("instances:remove", id),
   instancesDuplicate: (id: string) => ipcRenderer.invoke("instances:duplicate", id),
   instancesOpenFolder: (id: string) => ipcRenderer.invoke("instances:openFolder", id),
+  instancesExport: (id: string) => ipcRenderer.invoke("instances:export", id),
+  instancesImport: () => ipcRenderer.invoke("instances:import"),
 
   modsList: (instanceId: string) => ipcRenderer.invoke("mods:list", instanceId),
   modsSetEnabled: (instanceId: string, modId: string, enabled: boolean) =>

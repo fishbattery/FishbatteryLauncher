@@ -25,6 +25,7 @@ import { launchInstance, isInstanceRunning, stopInstance } from "./launch";
 import type { LaunchRuntimePrefs } from "./launch";
 import { registerContentIpc } from "./content";
 import { exportDiagnosticsZip } from "./diagnostics";
+import { exportInstanceToZip, importInstanceFromZip } from "./instanceTransfer";
 import {
   checkForUpdates,
   downloadUpdate,
@@ -66,6 +67,45 @@ export function registerIpc() {
   ipcMain.handle("instances:openFolder", async (_e, id: string) => {
     if (!id) throw new Error("instances:openFolder: id missing");
     return shell.openPath(getInstanceDir(id));
+  });
+
+  ipcMain.handle("instances:export", async (e, id: string) => {
+    if (!id) throw new Error("instances:export: id missing");
+    const db = listInstances();
+    const inst = db.instances.find((x) => x.id === id);
+    if (!inst) throw new Error("instances:export: instance not found");
+
+    const owner = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+    const defaultPath = path.join(
+      app.getPath("downloads"),
+      `${String(inst.name || "instance").replace(/[<>:\"/\\|?*\x00-\x1F]/g, "_")}.zip`
+    );
+
+    const picked = await dialog.showSaveDialog(owner, {
+      title: "Export Instance",
+      defaultPath,
+      filters: [{ name: "Zip archive", extensions: ["zip"] }]
+    });
+    if (picked.canceled || !picked.filePath) return { ok: false as const, canceled: true as const };
+
+    const out = exportInstanceToZip(id, picked.filePath);
+    return { ok: true as const, canceled: false as const, path: out };
+  });
+
+  ipcMain.handle("instances:import", async (e) => {
+    const owner = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+    const picked = await dialog.showOpenDialog(owner, {
+      title: "Import Instance",
+      properties: ["openFile"],
+      filters: [{ name: "Zip archive", extensions: ["zip"] }]
+    });
+
+    if (picked.canceled || !picked.filePaths?.length) {
+      return { ok: false as const, canceled: true as const };
+    }
+
+    const imported = importInstanceFromZip(picked.filePaths[0]);
+    return { ok: true as const, canceled: false as const, instance: imported };
   });
 
   // ---------- Accounts ----------
