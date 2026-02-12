@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("api", {
   instancesImport: () => ipcRenderer.invoke("instances:import"),
   modrinthPacksSearch: (query: string, limit?: number) => ipcRenderer.invoke("modrinthPacks:search", query, limit),
   modrinthPacksInstall: (payload: any) => ipcRenderer.invoke("modrinthPacks:install", payload),
+  packArchiveImport: (payload: any) => ipcRenderer.invoke("packArchive:import", payload),
   lockfileGenerate: (instanceId: string) => ipcRenderer.invoke("lockfile:generate", instanceId),
   lockfileDrift: (instanceId: string) => ipcRenderer.invoke("lockfile:drift", instanceId),
   serversList: (instanceId: string) => ipcRenderer.invoke("servers:list", instanceId),

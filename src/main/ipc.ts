@@ -29,6 +29,7 @@ import { getLastPreflightChecks, runPreflightChecks } from "./preflight";
 import { exportInstanceToZip, importInstanceFromZip } from "./instanceTransfer";
 import { checkInstanceLockfileDrift, generateInstanceLockfile } from "./instanceLockfile";
 import { installModrinthModpack, searchModrinthModpacks } from "./modrinthPacks";
+import { importPackArchive, type ProviderHint } from "./packArchiveImport";
 import { buildOptimizerPreview, applyOptimizer, restoreOptimizerDefaults } from "./optimizer";
 import { listBenchmarks, runBenchmark } from "./benchmark";
 import { fixDuplicateMods, validateInstanceMods } from "./modValidation";
@@ -147,6 +148,37 @@ export function registerIpc() {
       accountId: payload.accountId ?? null,
       memoryMb: Number(payload.memoryMb || 6144)
     });
+  });
+
+  ipcMain.handle("packArchive:import", async (e, payload: any) => {
+    const provider = String(payload?.provider || "auto") as ProviderHint;
+    const defaults = payload?.defaults || {};
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const openOpts = {
+      title: "Import Pack Archive",
+      properties: ["openFile"] as ("openFile")[],
+      filters: [
+        { name: "Pack archives", extensions: ["zip", "mrpack"] },
+        { name: "All files", extensions: ["*"] }
+      ]
+    };
+    const picked = owner ? await dialog.showOpenDialog(owner, openOpts) : await dialog.showOpenDialog(openOpts);
+    if (picked.canceled || !picked.filePaths?.length) {
+      return { ok: false as const, canceled: true as const };
+    }
+
+    const result = await importPackArchive({
+      providerHint: provider,
+      zipPath: picked.filePaths[0],
+      defaults: {
+        name: defaults?.name ? String(defaults.name) : undefined,
+        mcVersion: defaults?.mcVersion ? String(defaults.mcVersion) : undefined,
+        accountId: defaults?.accountId ?? null,
+        memoryMb: Number(defaults?.memoryMb || 6144)
+      }
+    });
+
+    return { ok: true as const, canceled: false as const, result };
   });
 
   ipcMain.handle("lockfile:generate", async (_e, instanceId: string) => {

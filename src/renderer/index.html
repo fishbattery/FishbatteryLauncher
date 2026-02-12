@@ -150,6 +150,9 @@
                 <button id="createSourceImport" class="btn" type="button">Import</button>
                 <button id="createSourceModrinth" class="btn" type="button">Modrinth</button>
                 <button id="createSourceCurseForge" class="btn" type="button">CurseForge</button>
+                <button id="createSourceTechnic" class="btn" type="button">Technic</button>
+                <button id="createSourceATLauncher" class="btn" type="button">ATLauncher</button>
+                <button id="createSourceFTB" class="btn" type="button">FTB</button>
               </div>
               <div id="createSourceHint" class="muted" style="font-size:12px; margin-top:6px">
                 Build a custom instance with manual version + loader selection.
@@ -179,8 +182,11 @@
                   <div id="modrinthSearchResults" style="margin-top:10px; max-height:230px; overflow:auto"></div>
                 </div>
                 <div id="createCurseForgePanel" style="margin-top:10px; display:none">
-                  <div class="setHelp">
-                    CurseForge in-app browser/install is planned next. Use Import for CurseForge zip packs in this build.
+                  <div class="setHelp" id="providerArchiveHelp">
+                    Import provider archive to create a new instance.
+                  </div>
+                  <div class="row" style="margin-top:10px; justify-content:flex-start">
+                    <button id="btnProviderImportArchive" class="btn" type="button">Import pack archive</button>
                   </div>
                 </div>
               </div>

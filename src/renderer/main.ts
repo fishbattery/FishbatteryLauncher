@@ -109,6 +109,9 @@ const createSourceCustom = $("createSourceCustom");
 const createSourceImport = $("createSourceImport");
 const createSourceModrinth = $("createSourceModrinth");
 const createSourceCurseForge = $("createSourceCurseForge");
+const createSourceTechnic = $("createSourceTechnic");
+const createSourceATLauncher = $("createSourceATLauncher");
+const createSourceFTB = $("createSourceFTB");
 const createSourceHint = $("createSourceHint");
 const createProviderImport = $("createProviderImport");
 const createProviderMarketplace = $("createProviderMarketplace");
@@ -116,6 +119,8 @@ const createProviderMarketplaceTitle = $("createProviderMarketplaceTitle");
 const createProviderMarketplaceHelp = $("createProviderMarketplaceHelp");
 const createModrinthPanel = $("createModrinthPanel");
 const createCurseForgePanel = $("createCurseForgePanel");
+const providerArchiveHelp = $("providerArchiveHelp");
+const btnProviderImportArchive = $("btnProviderImportArchive");
 const modrinthSearchInput = $("modrinthSearchInput") as HTMLInputElement;
 const btnModrinthSearch = $("btnModrinthSearch");
 const modrinthResultsLabel = $("modrinthResultsLabel");
@@ -161,7 +166,7 @@ let preflightState: any = null;
 let hasAutoCheckedUpdates = false;
 let promptedUpdateVersion: string | null = null;
 let promptedInstallVersion: string | null = null;
-let createSource: "custom" | "import" | "modrinth" | "curseforge" = "custom";
+let createSource: "custom" | "import" | "modrinth" | "curseforge" | "technic" | "atlauncher" | "ftb" = "custom";
 let createIncludeReleases = true;
 let createIncludeSnapshots = false;
 let selectedModrinthPack: { projectId: string; title: string; latestVersionId: string | null } | null = null;
@@ -1948,6 +1953,9 @@ async function renderInstances() {
       createSourceImport.toggleAttribute("disabled", true);
       createSourceModrinth.toggleAttribute("disabled", true);
       createSourceCurseForge.toggleAttribute("disabled", true);
+      createSourceTechnic.toggleAttribute("disabled", true);
+      createSourceATLauncher.toggleAttribute("disabled", true);
+      createSourceFTB.toggleAttribute("disabled", true);
       fillInstancePresetDropdown(i.instancePreset ?? "none");
       await fillInstanceAccountDropdown(i.accountId ?? null);
       await renderServerEntries(i.id);
@@ -2083,27 +2091,34 @@ function updateCreateLoaderUi() {
   createLoaderHint.textContent = `${loader} support is planned. Select Fabric/Vanilla for now.`;
 }
 
-function setCreateSource(next: "custom" | "import" | "modrinth" | "curseforge") {
+function setCreateSource(next: "custom" | "import" | "modrinth" | "curseforge" | "technic" | "atlauncher" | "ftb") {
   createSource = next;
   const isCustom = next === "custom";
   const isImport = next === "import";
-  const isMarket = next === "modrinth" || next === "curseforge";
+  const isMarket = next === "modrinth" || next === "curseforge" || next === "technic" || next === "atlauncher" || next === "ftb";
 
   createSourceCustom.classList.toggle("btnPrimary", next === "custom");
   createSourceImport.classList.toggle("btnPrimary", next === "import");
   createSourceModrinth.classList.toggle("btnPrimary", next === "modrinth");
   createSourceCurseForge.classList.toggle("btnPrimary", next === "curseforge");
+  createSourceTechnic.classList.toggle("btnPrimary", next === "technic");
+  createSourceATLauncher.classList.toggle("btnPrimary", next === "atlauncher");
+  createSourceFTB.classList.toggle("btnPrimary", next === "ftb");
 
   createSourceCustom.classList.toggle("btn", true);
   createSourceImport.classList.toggle("btn", true);
   createSourceModrinth.classList.toggle("btn", true);
   createSourceCurseForge.classList.toggle("btn", true);
+  createSourceTechnic.classList.toggle("btn", true);
+  createSourceATLauncher.classList.toggle("btn", true);
+  createSourceFTB.classList.toggle("btn", true);
 
   createCustomFields.style.display = isCustom ? "" : "none";
   createProviderImport.style.display = isImport ? "" : "none";
   createProviderMarketplace.style.display = isMarket ? "" : "none";
+  const isArchiveProvider = next === "curseforge" || next === "technic" || next === "atlauncher" || next === "ftb";
   createModrinthPanel.style.display = next === "modrinth" ? "" : "none";
-  createCurseForgePanel.style.display = next === "curseforge" ? "" : "none";
+  createCurseForgePanel.style.display = isArchiveProvider ? "" : "none";
   if (modalMode === "edit") modalCreate.textContent = "Save";
   else modalCreate.textContent = isCustom ? "Create" : isImport ? "Import" : "Install";
 
@@ -2116,15 +2131,26 @@ function setCreateSource(next: "custom" | "import" | "modrinth" | "curseforge") 
     return;
   }
   createProviderMarketplaceTitle.textContent =
-    next === "modrinth" ? "Modrinth modpack browser" : "CurseForge modpack browser";
+    next === "modrinth"
+      ? "Modrinth modpack browser"
+      : next === "curseforge"
+        ? "CurseForge pack import"
+        : next === "technic"
+          ? "Technic pack import"
+          : next === "atlauncher"
+            ? "ATLauncher pack import"
+            : "FTB pack import";
   createProviderMarketplaceHelp.textContent =
     next === "modrinth"
       ? "Browse and install Modrinth modpacks into a new isolated instance."
-      : "CurseForge in-app browser/install is planned next. Use Import for CurseForge zip packs.";
+      : "Import provider pack archives into a new isolated instance.";
   createSourceHint.textContent =
     next === "modrinth"
       ? "Search Modrinth and install directly to a new instance."
-      : "CurseForge browser is staged. Use Import for now.";
+      : "Select a provider archive (.zip/.mrpack) and import it into a new instance.";
+  if (isArchiveProvider) {
+    providerArchiveHelp.textContent = `Import ${next === "atlauncher" ? "ATLauncher" : next.toUpperCase()} archive and create a new instance.`;
+  }
   if (next === "modrinth" && !modrinthSearchResults.innerHTML) {
     void guarded(async () => {
       await runModrinthSearch();
@@ -2259,6 +2285,9 @@ createSourceCustom.onclick = () => setCreateSource("custom");
 createSourceImport.onclick = () => setCreateSource("import");
 createSourceModrinth.onclick = () => setCreateSource("modrinth");
 createSourceCurseForge.onclick = () => setCreateSource("curseforge");
+createSourceTechnic.onclick = () => setCreateSource("technic");
+createSourceATLauncher.onclick = () => setCreateSource("atlauncher");
+createSourceFTB.onclick = () => setCreateSource("ftb");
 btnModrinthSearch.onclick = () =>
   guarded(async () => {
     await runModrinthSearch();
@@ -2275,6 +2304,29 @@ btnCreateImportNow.onclick = () =>
     state.instances = await window.api.instancesList();
     await renderInstances();
     appendLog(`[instance] Imported "${res.instance?.name ?? "instance"}"`);
+    closeModal();
+  });
+btnProviderImportArchive.onclick = () =>
+  guarded(async () => {
+    const provider =
+      createSource === "curseforge" || createSource === "technic" || createSource === "atlauncher" || createSource === "ftb"
+        ? createSource
+        : "auto";
+    const res = await window.api.packArchiveImport({
+      provider,
+      defaults: {
+        name: newName.value?.trim() || undefined,
+        mcVersion: newVersion.value || undefined,
+        accountId: instanceAccount.value || null,
+        memoryMb: Number(newMem.value || 6144)
+      }
+    });
+    if (!res.ok || res.canceled) return;
+    state.instances = await window.api.instancesList();
+    await renderInstances();
+    appendLog(
+      `[pack-import] ${provider} -> ${res.result.detectedFormat}: "${res.result.instance?.name}" (${(res.result.notes || []).join(" | ")})`
+    );
     closeModal();
   });
 
@@ -2301,6 +2353,9 @@ btnCreate.onclick = async () => {
   createSourceImport.removeAttribute("disabled");
   createSourceModrinth.removeAttribute("disabled");
   createSourceCurseForge.removeAttribute("disabled");
+  createSourceTechnic.removeAttribute("disabled");
+  createSourceATLauncher.removeAttribute("disabled");
+  createSourceFTB.removeAttribute("disabled");
 
   await fillInstanceAccountDropdown(null);
   await renderServerEntries(null);
@@ -2343,9 +2398,31 @@ modalCreate.onclick = () =>
         return;
       }
 
-      if (createSource === "modrinth" || createSource === "curseforge") {
-        if (createSource === "curseforge") {
-          alert("CurseForge in-app install is not available yet. Use Import for CurseForge zip packs.");
+      if (
+        createSource === "modrinth" ||
+        createSource === "curseforge" ||
+        createSource === "technic" ||
+        createSource === "atlauncher" ||
+        createSource === "ftb"
+      ) {
+        if (createSource !== "modrinth") {
+          const res = await window.api.packArchiveImport({
+            provider: createSource,
+            defaults: {
+              name: newName.value?.trim() || undefined,
+              mcVersion: newVersion.value || undefined,
+              accountId: instanceAccount.value || null,
+              memoryMb: Number(newMem.value || 6144)
+            }
+          });
+          if (!res.ok || res.canceled) return;
+          setStatus("");
+          state.instances = await window.api.instancesList();
+          await renderInstances();
+          appendLog(
+            `[pack-import] ${createSource} -> ${res.result.detectedFormat}: "${res.result.instance?.name}" (${(res.result.notes || []).join(" | ")})`
+          );
+          closeModal();
           return;
         }
         if (!selectedModrinthPack) {

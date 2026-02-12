@@ -64,6 +64,26 @@ declare global {
         accountId?: string | null;
         memoryMb?: number;
       }) => Promise<{ instance: any; version: { id: string; name: string; versionNumber: string } }>;
+      packArchiveImport: (payload: {
+        provider: "auto" | "curseforge" | "technic" | "atlauncher" | "ftb";
+        defaults?: {
+          name?: string;
+          mcVersion?: string;
+          accountId?: string | null;
+          memoryMb?: number;
+        };
+      }) => Promise<
+        | {
+            ok: true;
+            canceled: false;
+            result: {
+              instance: any;
+              detectedFormat: "modrinth" | "curseforge" | "generic";
+              notes: string[];
+            };
+          }
+        | { ok: false; canceled: true }
+      >;
       lockfileGenerate: (instanceId: string) => Promise<{
         generatedAt: string;
         artifacts: number;
