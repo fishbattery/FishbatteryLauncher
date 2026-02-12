@@ -21,6 +21,7 @@ import { pickFabricLoader } from "./fabric";
 import { installFabricVersion } from "./fabricInstall";
 import { installVanillaVersion } from "./vanillaInstall";
 import { launchInstance, isInstanceRunning, stopInstance } from "./launch";
+import type { LaunchRuntimePrefs } from "./launch";
 import { registerContentIpc } from "./content";
 import {
   checkForUpdates,
@@ -166,13 +167,16 @@ export function registerIpc() {
   });
 
   // ---------- Launch ----------
-  ipcMain.handle("launch", async (e, instanceId: string, accountId: string) => {
+  ipcMain.handle(
+    "launch",
+    async (e, instanceId: string, accountId: string, runtimePrefs?: LaunchRuntimePrefs) => {
     try {
       if (!instanceId) throw new Error("launch: instanceId missing");
       if (!accountId) throw new Error("launch: accountId missing");
 
       await launchInstance(instanceId, {
         accountId,
+        runtimePrefs,
         onLog: (line: string) => e.sender.send("launch:log", line)
       });
 
@@ -182,7 +186,8 @@ export function registerIpc() {
       e.sender.send("launch:log", `[ipc] Launch failed: ${message}`);
       return { ok: false, error: message };
     }
-  });
+    }
+  );
 
   ipcMain.handle("launch:isRunning", async (_e, instanceId: string) => {
     if (!instanceId) throw new Error("launch:isRunning: instanceId missing");

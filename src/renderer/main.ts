@@ -68,8 +68,10 @@ const modalPanelMods = $("modalPanelMods");
 const modalPanelPacks = $("modalPanelPacks");
 
 const modalUpdateMods = $("modalUpdateMods");
+const modalUpdatePacks = $("modalUpdatePacks");
 const modalModsHint = $("modalModsHint");
 const modalModsList = $("modalModsList");
+const recommendedPacksList = $("recommendedPacksList");
 
 const modalUploadLocalMod = $("modalUploadLocalMod");
 const modalOpenInstanceFolder = $("modalOpenInstanceFolder");
@@ -109,6 +111,9 @@ let updaterState: UpdaterUiState = {
   message: "Updates not checked yet.",
   updatedAt: Date.now()
 };
+let hasAutoCheckedUpdates = false;
+let promptedUpdateVersion: string | null = null;
+let promptedInstallVersion: string | null = null;
 
 // ---------------- Settings ----------------
 type AppSettings = {
@@ -225,6 +230,7 @@ modalTabMods.onclick = async () => {
 };
 modalTabPacks.onclick = async () => {
   setModalTab("packs");
+  await renderRecommendedPacks(editInstanceId);
   await renderLocalContent(editInstanceId);
 };
 
@@ -989,6 +995,15 @@ async function refreshAll() {
   await renderAccounts();
   await renderInstances();
   setStatus("");
+
+  if (!hasAutoCheckedUpdates) {
+    hasAutoCheckedUpdates = true;
+    try {
+      await window.api.updaterCheck();
+    } catch {
+      // Keep startup silent if update check fails.
+    }
+  }
 }
 
 // ---------------- Event wiring ----------------
@@ -1091,8 +1106,13 @@ btnPlayActive.onclick = () =>
       return;
     }
 
+    const s = getSettings();
     appendLog(`[ui] Launching ${inst.name}…`);
-    await window.api.launch(inst.id, accountId);
+    await window.api.launch(inst.id, accountId, {
+      jvmArgs: s.jvmArgs,
+      preLaunch: s.preLaunch,
+      postExit: s.postExit
+    });
   });
 
 btnStopActive.onclick = () =>
@@ -1146,6 +1166,28 @@ window.api.onUpdaterEvent((evt) => {
     renderSettingsPanels();
   }
   if (evt?.message) appendLog(`[updater] ${evt.message}`);
+
+  if (evt?.status === "update-available") {
+    const v = String(evt.latestVersion ?? "");
+    if (v && promptedUpdateVersion !== v) {
+      promptedUpdateVersion = v;
+      const yes = confirm(`Update v${v} is available. Download now?`);
+      if (yes) {
+        void window.api.updaterDownload();
+      }
+    }
+  }
+
+  if (evt?.status === "downloaded") {
+    const v = String(evt.latestVersion ?? "");
+    if (v && promptedInstallVersion !== v) {
+      promptedInstallVersion = v;
+      const yes = confirm(`Update v${v} downloaded. Restart now to install?`);
+      if (yes) {
+        void window.api.updaterInstall();
+      }
+    }
+  }
 });
 
 // Close account dropdown when clicking outside
@@ -1162,4 +1204,3 @@ document.addEventListener("click", (e) => {
 applySettingsToDom(getSettings());
 setSettingsTab("general");
 refreshAll();
-

@@ -55,7 +55,11 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("fabric:install", instanceId, mcVersion, loaderVersion),
 
   // ✅ IDs only
-  launch: (instanceId: string, accountId: string) => ipcRenderer.invoke("launch", instanceId, accountId),
+  launch: (
+    instanceId: string,
+    accountId: string,
+    runtimePrefs?: { jvmArgs?: string; preLaunch?: string; postExit?: string }
+  ) => ipcRenderer.invoke("launch", instanceId, accountId, runtimePrefs),
   launchIsRunning: (instanceId: string) => ipcRenderer.invoke("launch:isRunning", instanceId),
   launchStop: (instanceId: string) => ipcRenderer.invoke("launch:stop", instanceId),
 

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { Client } from "minecraft-launcher-core";
 import { getInstanceDir, InstanceConfig, listInstances, updateInstance } from "./instances";
 import { StoredAccount, getAccountById } from "./accounts";
@@ -11,6 +11,12 @@ import crypto from "node:crypto";
 import { getDataRoot, getAssetsRoot, getLibrariesRoot, getVersionsRoot } from "./paths";
 
 const running = new Map<string, any>(); // instanceId -> child process
+
+export type LaunchRuntimePrefs = {
+  jvmArgs?: string;
+  preLaunch?: string;
+  postExit?: string;
+};
 
 function ensureDirs(p: string) {
   fs.mkdirSync(p, { recursive: true });
@@ -63,6 +69,59 @@ function pickJavaExecutable(onLog?: (line: string) => void) {
   }
   onLog?.("[launcher] No bundled Java found; using PATH java");
   return "java";
+}
+
+function splitShellWords(input: string): string[] {
+  const out: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|[^\s]+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(input)) !== null) {
+    out.push(m[1] ?? m[2] ?? m[0]);
+  }
+  return out;
+}
+
+async function runHookCommand(phase: "pre-launch" | "post-exit", command: string, onLog?: (line: string) => void) {
+  const cmd = String(command ?? "").trim();
+  if (!cmd) return;
+
+  onLog?.(`[hook] Running ${phase} hook: ${cmd}`);
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(cmd, {
+      shell: true,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    let stderr = "";
+
+    child.stdout?.on("data", (d) => {
+      const text = String(d).trim();
+      if (text) onLog?.(`[hook:${phase}] ${text}`);
+    });
+
+    child.stderr?.on("data", (d) => {
+      const text = String(d).trim();
+      if (text) {
+        stderr += (stderr ? "\n" : "") + text;
+        onLog?.(`[hook:${phase}:stderr] ${text}`);
+      }
+    });
+
+    child.on("error", (err) => {
+      reject(new Error(`${phase} hook failed to start: ${String((err as any)?.message ?? err)}`));
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        onLog?.(`[hook] ${phase} hook completed`);
+        resolve();
+        return;
+      }
+      reject(new Error(`${phase} hook exited with code ${code}${stderr ? `\n${stderr}` : ""}`));
+    });
+  });
 }
 
 export function isInstanceRunning(instanceId: string) {
@@ -182,7 +241,7 @@ function assertFabricInstalled(dataRoot: string, mcVersion: string, loaderVersio
  */
 export async function launchInstance(
   instanceId: string,
-  opts: { accountId: string; onLog?: (line: string) => void }
+  opts: { accountId: string; onLog?: (line: string) => void; runtimePrefs?: LaunchRuntimePrefs }
 ) {
   const db = listInstances();
   const inst = db.instances.find((x: any) => x.id === instanceId);
@@ -191,10 +250,15 @@ export async function launchInstance(
   const acc = getAccountById(opts.accountId);
   if (!acc) throw new Error("launch: account not found");
 
-  return launchResolved(inst, acc, opts.onLog);
+  return launchResolved(inst, acc, opts.onLog, opts.runtimePrefs);
 }
 
-async function launchResolved(instance: InstanceConfig, account: StoredAccount, onLog?: (line: string) => void) {
+async function launchResolved(
+  instance: InstanceConfig,
+  account: StoredAccount,
+  onLog?: (line: string) => void,
+  runtimePrefs?: LaunchRuntimePrefs
+) {
   if (!instance?.id) throw new Error("Launch failed: instance is missing or invalid.");
   if (!instance.mcVersion) throw new Error("Launch failed: instance.mcVersion is missing.");
   if (!account) throw new Error("Launch failed: no account was provided/selected.");
@@ -259,6 +323,11 @@ async function launchResolved(instance: InstanceConfig, account: StoredAccount, 
 
   const assetsDir = getAssetsRoot();
   const javaExe = pickJavaExecutable(onLog);
+  const customJavaArgs = splitShellWords(String(runtimePrefs?.jvmArgs ?? "").trim());
+
+  if (String(runtimePrefs?.preLaunch ?? "").trim()) {
+    await runHookCommand("pre-launch", String(runtimePrefs?.preLaunch), onLog);
+  }
 
   const launchOpts: any = {
     authorization,
@@ -272,6 +341,7 @@ async function launchResolved(instance: InstanceConfig, account: StoredAccount, 
     },
 
     javaPath: javaExe,
+    customArgs: customJavaArgs,
 
     overrides: {
       gameDirectory: gameDir,
@@ -289,6 +359,7 @@ async function launchResolved(instance: InstanceConfig, account: StoredAccount, 
   onLog?.(`[launcher] libraries=${launchOpts.overrides?.libraries}`);
   onLog?.(`[launcher] versions=${launchOpts.overrides?.versions}`);
   onLog?.(`[launcher] java=${javaExe}`);
+  if (customJavaArgs.length) onLog?.(`[launcher] custom JVM args: ${customJavaArgs.join(" ")}`);
 
   launcher.on("debug", (e: any) => onLog?.(`[debug] ${String(e)}`));
   launcher.on("data", (e: any) => onLog?.(`${String(e)}`));
@@ -302,6 +373,13 @@ async function launchResolved(instance: InstanceConfig, account: StoredAccount, 
   child.on?.("close", () => {
     running.delete(instance.id);
     onLog?.("[launcher] Game exited");
+
+    const postExit = String(runtimePrefs?.postExit ?? "").trim();
+    if (postExit) {
+      void runHookCommand("post-exit", postExit, onLog).catch((err: any) => {
+        onLog?.(`[hook] post-exit hook failed: ${String(err?.message ?? err)}`);
+      });
+    }
   });
 
   child.on?.("error", (err: any) => {

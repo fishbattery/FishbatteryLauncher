@@ -66,7 +66,11 @@ declare global {
       fabricInstall: (instanceId: string, mcVersion: string, loaderVersion: string) => Promise<any>;
 
       // ✅ IDs only
-      launch: (instanceId: string, accountId: string) => Promise<any>;
+      launch: (
+        instanceId: string,
+        accountId: string,
+        runtimePrefs?: { jvmArgs?: string; preLaunch?: string; postExit?: string }
+      ) => Promise<any>;
       launchIsRunning: (instanceId: string) => Promise<boolean>;
       launchStop: (instanceId: string) => Promise<boolean>;
       updaterGetState: () => Promise<{
