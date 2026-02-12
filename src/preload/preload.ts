@@ -1,3 +1,7 @@
+// FishbatteryLauncher
+// Copyright (C) 2026 Gudmundur Magnus Johannsson
+// Licensed under GPL v3
+
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("api", {

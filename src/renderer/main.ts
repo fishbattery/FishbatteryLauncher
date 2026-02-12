@@ -1,3 +1,7 @@
+// FishbatteryLauncher
+// Copyright (C) 2026 Gudmundur Magnus Johannsson
+// Licensed under GPL v3
+
 import "./index.css";
 import { CATALOG } from "../main/modrinthCatalog";
 import { PACK_CATALOG } from "../main/modrinthPackCatalog";
