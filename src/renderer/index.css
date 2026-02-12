@@ -350,12 +350,23 @@ body{
   align-items:center;
   gap: 10px;
 }
+.logsHeader .spacer{ flex: 1; }
 pre{
   margin: 0;
   padding: 10px 12px;
   height: 220px;
   overflow: auto;
   color: #b6ffcc;
+  font-size: 12px;
+}
+
+.launchDiagnosis{
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border2);
+  background: rgba(255,255,255,.03);
+  color: var(--text);
   font-size: 12px;
 }
 

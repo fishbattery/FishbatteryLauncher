@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import AdmZip from "adm-zip";
 import { CATALOG, CatalogMod } from "./modrinthCatalog";
 import { getInstanceDir, getModsStatePath } from "./instances";
 import { readJsonFile, writeJsonFile } from "./store";
@@ -64,6 +65,38 @@ function cleanOldFilesForCatalogId(modsDir: string, catalogId: string) {
       try { fs.rmSync(path.join(modsDir, f)); } catch {}
     }
   }
+}
+
+function cleanAutoDependencyFiles(modsDir: string) {
+  if (!fs.existsSync(modsDir)) return;
+  for (const f of fs.readdirSync(modsDir)) {
+    if (f.startsWith("dep__") && f.endsWith(".jar")) {
+      try { fs.rmSync(path.join(modsDir, f)); } catch {}
+    }
+  }
+}
+
+function readFabricModIdFromJar(filePath: string): string | null {
+  try {
+    const zip = new AdmZip(filePath);
+    const e = zip.getEntry("fabric.mod.json");
+    if (!e) return null;
+    const parsed = JSON.parse(zip.readAsText(e)) as any;
+    return typeof parsed?.id === "string" ? parsed.id : null;
+  } catch {
+    return null;
+  }
+}
+
+function collectInstalledModIds(modsDir: string): Set<string> {
+  const out = new Set<string>();
+  if (!fs.existsSync(modsDir)) return out;
+  for (const f of fs.readdirSync(modsDir)) {
+    if (!f.endsWith(".jar")) continue;
+    const id = readFabricModIdFromJar(path.join(modsDir, f));
+    if (id) out.add(id);
+  }
+  return out;
 }
 
 function targetFileName(catalogId: string, upstreamFileName: string, enabled: boolean) {
@@ -157,6 +190,7 @@ export async function refreshModsForInstance(opts: { instanceId: string; mcVersi
   fs.mkdirSync(cacheDir, { recursive: true });
 
   const resolved: Record<string, ResolvedMod> = {};
+  const dependencyQueue: string[] = [];
 
   for (const mod of CATALOG) {
     const shouldEnable = mod.required ? true : !!state.enabled[mod.id];
@@ -227,6 +261,10 @@ export async function refreshModsForInstance(opts: { instanceId: string; mcVersi
         sha512: r.sha512,
         lastCheckedAt: Date.now()
       };
+
+      for (const depProjectId of r.requiredProjectIds || []) {
+        dependencyQueue.push(depProjectId);
+      }
     } catch (e: any) {
       resolved[mod.id] = {
         catalogId: mod.id,
@@ -238,6 +276,54 @@ export async function refreshModsForInstance(opts: { instanceId: string; mcVersi
         lastCheckedAt: Date.now()
       };
       cleanOldFilesForCatalogId(modsDir, mod.id);
+    }
+  }
+
+  // Auto-install required dependencies declared by resolved mods on Modrinth.
+  cleanAutoDependencyFiles(modsDir);
+  const installedIds = collectInstalledModIds(modsDir);
+  const visitedProjects = new Set<string>();
+
+  while (dependencyQueue.length) {
+    const depProjectId = String(dependencyQueue.shift() || "").trim();
+    if (!depProjectId || visitedProjects.has(depProjectId)) continue;
+    visitedProjects.add(depProjectId);
+
+    try {
+      const depResolved = await resolveLatestModrinth({
+        projectId: depProjectId,
+        mcVersion: opts.mcVersion,
+        loader: "fabric"
+      });
+      if (!depResolved) continue;
+
+      const cacheName = depResolved.sha1
+        ? `dep-${depProjectId}-${depResolved.sha1}.jar`
+        : `dep-${depProjectId}-${depResolved.fileName}`;
+      const cachedPath = path.join(cacheDir, cacheName);
+
+      if (!fs.existsSync(cachedPath)) {
+        const buf = await downloadBuffer(depResolved.url);
+        if (depResolved.sha1) {
+          const got = sha1Of(buf);
+          if (got !== depResolved.sha1) throw new Error(`SHA1 mismatch for dependency ${depProjectId}`);
+        }
+        fs.writeFileSync(cachedPath, buf);
+      }
+
+      const depModId = readFabricModIdFromJar(cachedPath) ?? depProjectId;
+      if (!installedIds.has(depModId)) {
+        const safeUpstream = depResolved.fileName.replace(/[^a-zA-Z0-9._-]+/g, "_");
+        const depTarget = path.join(modsDir, `dep__${depModId}__${safeUpstream}`);
+        fs.copyFileSync(cachedPath, depTarget);
+        installedIds.add(depModId);
+      }
+
+      for (const transitive of depResolved.requiredProjectIds || []) {
+        if (!visitedProjects.has(transitive)) dependencyQueue.push(transitive);
+      }
+    } catch {
+      // best effort: dependency metadata can be incomplete for some projects
     }
   }
 

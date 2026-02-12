@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { BrowserWindow, app } from "electron";
 import { autoUpdater } from "electron-updater";
 
 export type UpdaterStatus =
@@ -136,11 +136,27 @@ export function setUpdateChannel(channel: UpdateChannel) {
 }
 
 export async function checkForUpdates() {
+  if (!app.isPackaged) {
+    setState({
+      status: "idle",
+      message: "Update checks are disabled in development builds.",
+      progressPercent: undefined
+    });
+    return false;
+  }
   await autoUpdater.checkForUpdates();
   return true;
 }
 
 export async function downloadUpdate() {
+  if (!app.isPackaged) {
+    setState({
+      status: "idle",
+      message: "Update downloads are disabled in development builds.",
+      progressPercent: undefined
+    });
+    return false;
+  }
   await autoUpdater.downloadUpdate();
   return true;
 }

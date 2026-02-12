@@ -12,6 +12,12 @@ export type ModrinthVersion = {
     hashes: { sha1?: string; sha512?: string };
     primary: boolean;
   }>;
+  dependencies?: Array<{
+    version_id?: string | null;
+    project_id?: string | null;
+    file_name?: string | null;
+    dependency_type?: "required" | "optional" | "incompatible" | "embedded" | string;
+  }>;
 };
 
 export type ResolveLatestModrinthOpts = {
@@ -32,6 +38,7 @@ export type ResolvedModrinthFile = {
   url: string;
   sha1?: string;
   sha512?: string;
+  requiredProjectIds: string[];
 } | null;
 
 const UA = "YourLauncher/0.2.0 (local)";
@@ -70,7 +77,10 @@ export async function resolveLatestModrinth(
     fileName: primary.filename,
     url: primary.url,
     sha1: primary.hashes.sha1,
-    sha512: primary.hashes.sha512
+    sha512: primary.hashes.sha512,
+    requiredProjectIds: (chosen.dependencies ?? [])
+      .filter((d) => d?.dependency_type === "required" && !!d?.project_id)
+      .map((d) => String(d.project_id))
   };
 }
 

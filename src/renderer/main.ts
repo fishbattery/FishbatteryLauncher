@@ -36,6 +36,9 @@ const btnImport = $("btnImport");
 const btnPlayActive = $("btnPlayActive");
 const btnStopActive = $("btnStopActive");
 const btnClearLogs = $("btnClearLogs");
+const btnAnalyzeLogs = $("btnAnalyzeLogs");
+const btnApplyDiagnosisFix = $("btnApplyDiagnosisFix") as HTMLButtonElement;
+const launchDiagnosis = $("launchDiagnosis");
 
 // Settings nav + panels
 const settingsTabGeneral = $("settingsTabGeneral");
@@ -92,6 +95,12 @@ const optProfile = $("optProfile") as HTMLSelectElement;
 const btnOptimizeInstance = $("btnOptimizeInstance");
 const btnRestoreOptimization = $("btnRestoreOptimization");
 const btnRunBenchmark = $("btnRunBenchmark");
+const serverNameInput = $("serverNameInput") as HTMLInputElement;
+const serverAddressInput = $("serverAddressInput") as HTMLInputElement;
+const btnSaveServerEntry = $("btnSaveServerEntry");
+const serverList = $("serverList");
+const btnExportServerProfile = $("btnExportServerProfile");
+const btnImportServerProfile = $("btnImportServerProfile");
 
 let state: any = {
   versions: [],
@@ -102,6 +111,9 @@ let state: any = {
 let busy = false;
 let modalMode: "create" | "edit" = "create";
 let editInstanceId: string | null = null;
+let editServerId: string | null = null;
+let launchLogBuffer: string[] = [];
+let latestDiagnosis: any = null;
 
 type UpdaterUiState = {
   status: "idle" | "checking" | "update-available" | "up-to-date" | "downloading" | "downloaded" | "error";
@@ -264,10 +276,40 @@ function appendLog(line: string) {
   const s = logsEl.textContent || "";
   logsEl.textContent = s + (s ? "\n" : "") + line;
   logsEl.scrollTop = logsEl.scrollHeight;
+  launchLogBuffer.push(line);
+  if (launchLogBuffer.length > 500) {
+    launchLogBuffer = launchLogBuffer.slice(launchLogBuffer.length - 500);
+  }
 }
 
 function setStatus(text: string) {
   statusText.textContent = text || "";
+}
+
+function renderLaunchDiagnosis(diag: any | null) {
+  latestDiagnosis = diag;
+  if (!diag) {
+    launchDiagnosis.style.display = "none";
+    launchDiagnosis.textContent = "";
+    btnApplyDiagnosisFix.disabled = true;
+    return;
+  }
+
+  const lines = [
+    `Diagnosis: ${diag.summary}`,
+    ...(diag.details ?? []).map((x: string) => `- ${x}`),
+    ...(diag.recommendedActions ?? []).map((x: string) => `Action: ${x}`)
+  ];
+  launchDiagnosis.textContent = lines.join("\n");
+  launchDiagnosis.style.display = "";
+  btnApplyDiagnosisFix.disabled = !diag.canAutoFix || !diag.fixAction || diag.fixAction === "none";
+}
+
+async function runLaunchDiagnosis(instanceId: string | null) {
+  if (!instanceId) return;
+  const diag = await window.api.launchDiagnose(instanceId, launchLogBuffer);
+  renderLaunchDiagnosis(diag);
+  appendLog(`[diagnostics] ${diag.summary}`);
 }
 
 async function guarded(fn: () => Promise<void>) {
@@ -924,6 +966,84 @@ settingsTabWindow.onclick = () => setSettingsTab("window");
 settingsTabJava.onclick = () => setSettingsTab("java");
 settingsTabHooks.onclick = () => setSettingsTab("hooks");
 
+async function renderServerEntries(instanceId: string | null) {
+  serverList.innerHTML = "";
+  editServerId = null;
+  serverNameInput.value = "";
+  serverAddressInput.value = "";
+
+  if (!instanceId || modalMode !== "edit") {
+    serverList.innerHTML = '<div class="muted" style="font-size:12px">Create/save instance first to manage servers.</div>';
+    return;
+  }
+
+  const data = await window.api.serversList(instanceId);
+  const entries = data?.servers ?? [];
+
+  if (!entries.length) {
+    serverList.innerHTML = '<div class="muted" style="font-size:12px">No servers saved yet.</div>';
+    return;
+  }
+
+  for (const entry of entries) {
+    const row = document.createElement("div");
+    row.className = "setRow";
+
+    const left = document.createElement("div");
+    left.style.display = "flex";
+    left.style.flexDirection = "column";
+
+    const title = document.createElement("div");
+    title.className = "setLabel";
+    title.textContent = entry.name + (data.preferredServerId === entry.id ? " (preferred)" : "");
+
+    const sub = document.createElement("div");
+    sub.className = "setHelp";
+    sub.textContent = `${entry.address}${entry.notes ? ` - ${entry.notes}` : ""}`;
+
+    left.appendChild(title);
+    left.appendChild(sub);
+
+    const actions = document.createElement("div");
+    actions.className = "row";
+    actions.style.justifyContent = "flex-end";
+    actions.style.gap = "8px";
+
+    const btnPrefer = document.createElement("button");
+    btnPrefer.className = "btn";
+    btnPrefer.textContent = data.preferredServerId === entry.id ? "Preferred" : "Set preferred";
+    btnPrefer.onclick = async () => {
+      await window.api.serversSetPreferred(instanceId, entry.id);
+      await renderServerEntries(instanceId);
+    };
+
+    const btnEdit = document.createElement("button");
+    btnEdit.className = "btn";
+    btnEdit.textContent = "Edit";
+    btnEdit.onclick = () => {
+      editServerId = entry.id;
+      serverNameInput.value = entry.name;
+      serverAddressInput.value = entry.address;
+    };
+
+    const btnRemove = document.createElement("button");
+    btnRemove.className = "btn btnDanger";
+    btnRemove.textContent = "Remove";
+    btnRemove.onclick = async () => {
+      await window.api.serversRemove(instanceId, entry.id);
+      await renderServerEntries(instanceId);
+    };
+
+    actions.appendChild(btnPrefer);
+    actions.appendChild(btnEdit);
+    actions.appendChild(btnRemove);
+
+    row.appendChild(left);
+    row.appendChild(actions);
+    serverList.appendChild(row);
+  }
+}
+
 // ---------------- Local content (mods/resourcepacks/shaderpacks uploads) ----------------
 async function renderLocalContent(instanceId: string | null) {
   const can = modalMode === "edit" && !!instanceId;
@@ -1384,6 +1504,7 @@ async function renderInstances() {
       newVersion.value = i.mcVersion ?? "";
       fillInstancePresetDropdown(i.instancePreset ?? "none");
       await fillInstanceAccountDropdown(i.accountId ?? null);
+      await renderServerEntries(i.id);
       openModal();
     };
 
@@ -1495,6 +1616,7 @@ searchInstances.oninput = () => renderInstances();
 btnCreate.onclick = async () => {
   modalMode = "create";
   editInstanceId = null;
+  editServerId = null;
   modalTitle.textContent = "Create an instance";
   newName.value = "";
   newMem.value = String(getSettings().defaultMemoryMb ?? 4096);
@@ -1512,6 +1634,7 @@ btnCreate.onclick = async () => {
   }
 
   await fillInstanceAccountDropdown(null);
+  await renderServerEntries(null);
   openModal();
 };
 
@@ -1614,12 +1737,16 @@ btnPlayActive.onclick = () =>
     } else if (validation.summary === "warnings") {
       appendLog("[validation] Warnings detected. Open Mods tab for details.");
     }
-    appendLog(`[ui] Launching ${inst.name}…`);
-    await window.api.launch(inst.id, accountId, {
+    appendLog(`[ui] Launching ${inst.name}...`);
+    renderLaunchDiagnosis(null);
+    const launchRes = await window.api.launch(inst.id, accountId, {
       jvmArgs: inst.jvmArgsOverride || s.jvmArgs,
       preLaunch: s.preLaunch,
       postExit: s.postExit
     });
+    if (!launchRes?.ok) {
+      await runLaunchDiagnosis(inst.id);
+    }
   });
 
 btnStopActive.onclick = () =>
@@ -1629,10 +1756,86 @@ btnStopActive.onclick = () =>
     await window.api.launchStop(active);
   });
 
-btnClearLogs.onclick = () => (logsEl.textContent = "");
+btnClearLogs.onclick = () => {
+  logsEl.textContent = "";
+  launchLogBuffer = [];
+  renderLaunchDiagnosis(null);
+};
+btnAnalyzeLogs.onclick = () =>
+  guarded(async () => {
+    const active = state.instances?.activeInstanceId ?? null;
+    await runLaunchDiagnosis(active);
+  });
+
+btnApplyDiagnosisFix.onclick = () =>
+  guarded(async () => {
+    const active = state.instances?.activeInstanceId ?? null;
+    if (!active || !latestDiagnosis?.fixAction || latestDiagnosis.fixAction === "none") return;
+    const result = await window.api.launchApplyFix(active, latestDiagnosis.fixAction);
+    appendLog(`[diagnostics] ${result.message}`);
+    await runLaunchDiagnosis(active);
+  });
+
 btnOptimizeInstance.onclick = () => guarded(async () => optimizeActiveModalInstance());
 btnRestoreOptimization.onclick = () => guarded(async () => restoreActiveModalOptimization());
 btnRunBenchmark.onclick = () => guarded(async () => runActiveModalBenchmark());
+btnSaveServerEntry.onclick = () =>
+  guarded(async () => {
+    if (!editInstanceId || modalMode !== "edit") {
+      alert("Save the instance first, then add servers.");
+      return;
+    }
+
+    const name = serverNameInput.value.trim();
+    const address = serverAddressInput.value.trim();
+    if (!name || !address) {
+      alert("Server name and address are required.");
+      return;
+    }
+
+    await window.api.serversUpsert(editInstanceId, {
+      id: editServerId ?? undefined,
+      name,
+      address
+    });
+
+    editServerId = null;
+    serverNameInput.value = "";
+    serverAddressInput.value = "";
+    await renderServerEntries(editInstanceId);
+  });
+
+btnExportServerProfile.onclick = () =>
+  guarded(async () => {
+    if (!editInstanceId || modalMode !== "edit") {
+      alert("Open an existing instance first.");
+      return;
+    }
+    const data = await window.api.serversList(editInstanceId);
+    const selected = data.servers.find((x: any) => x.id === data.preferredServerId) ?? data.servers[0];
+    if (!selected) {
+      alert("Add at least one server first.");
+      return;
+    }
+
+    const res = await window.api.serversExportProfile(editInstanceId, selected.id);
+    if (!res.ok || res.canceled) return;
+    appendLog(`[server-profile] Exported ${selected.name}: ${res.path}`);
+  });
+
+btnImportServerProfile.onclick = () =>
+  guarded(async () => {
+    if (!editInstanceId || modalMode !== "edit") {
+      alert("Open an existing instance first.");
+      return;
+    }
+    const res = await window.api.serversImportProfile(editInstanceId);
+    if (!res.ok || res.canceled) return;
+    state.instances = await window.api.instancesList();
+    await renderInstances();
+    await renderServerEntries(editInstanceId);
+    appendLog(`[server-profile] Imported profile for ${res.result?.server?.name ?? "server"}.`);
+  });
 
 modalUpdateMods.onclick = () =>
   guarded(async () => {
@@ -1693,13 +1896,30 @@ btnOpenInstanceFolder3.onclick = () =>
     await window.api.instancesOpenFolder(editInstanceId);
   });
 
-window.api.onLaunchLog((line) => appendLog(line));
+window.api.onLaunchLog((line) => {
+  appendLog(line);
+  const active = state.instances?.activeInstanceId ?? null;
+  const lower = String(line || "").toLowerCase();
+  if (
+    active &&
+    (lower.includes("launch failed") ||
+      lower.includes("modresolutionexception") ||
+      lower.includes("duplicate") ||
+      lower.includes("unsupportedclassversionerror"))
+  ) {
+    void runLaunchDiagnosis(active);
+  }
+});
 window.api.onUpdaterEvent((evt) => {
   updaterState = evt;
   if (settingsTabInstall.classList.contains("active")) {
     renderSettingsPanels();
   }
-  if (evt?.message) appendLog(`[updater] ${evt.message}`);
+  const msg = String(evt?.message ?? "");
+  const isDevNoopMsg =
+    msg === "Update checks are disabled in development builds." ||
+    msg === "Update downloads are disabled in development builds.";
+  if (msg && !isDevNoopMsg) appendLog(`[updater] ${msg}`);
 
   if (evt?.status === "update-available") {
     const v = String(evt.latestVersion ?? "");

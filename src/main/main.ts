@@ -5,6 +5,13 @@ import { CANONICAL_FOLDER } from "./paths";
 import { initUpdater } from "./updater";
 
 app.setPath("userData", path.join(app.getPath("appData"), CANONICAL_FOLDER));
+const localAppDataRoot = process.env.LOCALAPPDATA || app.getPath("appData");
+app.setPath("sessionData", path.join(localAppDataRoot, CANONICAL_FOLDER, "session"));
+
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) {
+  app.quit();
+}
 
 let win: BrowserWindow | null = null;
 
@@ -40,6 +47,12 @@ app.whenReady().then(async () => {
   registerIpc();
   await createWindow();
   if (win) initUpdater(win);
+});
+
+app.on("second-instance", () => {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.focus();
 });
 
 app.on("window-all-closed", () => {

@@ -29,6 +29,15 @@ import { exportInstanceToZip, importInstanceFromZip } from "./instanceTransfer";
 import { buildOptimizerPreview, applyOptimizer, restoreOptimizerDefaults } from "./optimizer";
 import { listBenchmarks, runBenchmark } from "./benchmark";
 import { fixDuplicateMods, validateInstanceMods } from "./modValidation";
+import { applyLaunchDiagnosisFix, diagnoseLaunchLogs, type LaunchFixAction } from "./launchDiagnostics";
+import {
+  exportServerProfile,
+  importServerProfile,
+  listInstanceServers,
+  removeInstanceServer,
+  setPreferredInstanceServer,
+  upsertInstanceServer
+} from "./servers";
 import {
   checkForUpdates,
   downloadUpdate,
@@ -115,6 +124,82 @@ export function registerIpc() {
 
     const imported = importInstanceFromZip(picked.filePaths[0]);
     return { ok: true as const, canceled: false as const, instance: imported };
+  });
+
+  // ---------- Per-instance servers / server profiles ----------
+  ipcMain.handle("servers:list", async (_e, instanceId: string) => {
+    if (!instanceId) throw new Error("servers:list: instanceId missing");
+    return listInstanceServers(instanceId);
+  });
+
+  ipcMain.handle("servers:upsert", async (_e, instanceId: string, entry: any) => {
+    if (!instanceId) throw new Error("servers:upsert: instanceId missing");
+    if (!entry) throw new Error("servers:upsert: entry missing");
+    return upsertInstanceServer(instanceId, entry);
+  });
+
+  ipcMain.handle("servers:remove", async (_e, instanceId: string, serverId: string) => {
+    if (!instanceId) throw new Error("servers:remove: instanceId missing");
+    if (!serverId) throw new Error("servers:remove: serverId missing");
+    return removeInstanceServer(instanceId, serverId);
+  });
+
+  ipcMain.handle("servers:setPreferred", async (_e, instanceId: string, serverId: string | null) => {
+    if (!instanceId) throw new Error("servers:setPreferred: instanceId missing");
+    return setPreferredInstanceServer(instanceId, serverId ?? null);
+  });
+
+  ipcMain.handle("servers:exportProfile", async (e, instanceId: string, serverId: string) => {
+    if (!instanceId) throw new Error("servers:exportProfile: instanceId missing");
+    if (!serverId) throw new Error("servers:exportProfile: serverId missing");
+
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const defaultPath = path.join(app.getPath("downloads"), `fishbattery-server-profile-${serverId}.zip`);
+    const saveOpts = {
+      title: "Export Server Profile",
+      defaultPath,
+      filters: [{ name: "Zip archive", extensions: ["zip"] }]
+    };
+    const picked = owner
+      ? await dialog.showSaveDialog(owner, saveOpts)
+      : await dialog.showSaveDialog(saveOpts);
+    if (picked.canceled || !picked.filePath) return { ok: false as const, canceled: true as const };
+
+    const out = exportServerProfile(instanceId, serverId, picked.filePath);
+    return { ok: true as const, canceled: false as const, path: out };
+  });
+
+  ipcMain.handle("servers:importProfile", async (e, instanceId: string) => {
+    if (!instanceId) throw new Error("servers:importProfile: instanceId missing");
+
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const openOpts = {
+      title: "Import Server Profile",
+      properties: ["openFile"] as ("openFile")[],
+      filters: [{ name: "Zip archive", extensions: ["zip"] }]
+    };
+    const picked = owner
+      ? await dialog.showOpenDialog(owner, openOpts)
+      : await dialog.showOpenDialog(openOpts);
+
+    if (picked.canceled || !picked.filePaths?.length) {
+      return { ok: false as const, canceled: true as const };
+    }
+
+    const result = importServerProfile(instanceId, picked.filePaths[0]);
+    const mcVersion = result?.applied?.mcVersion;
+    const loader = result?.applied?.loader;
+    if (mcVersion) {
+      if (loader === "fabric") {
+        await refreshModsForInstance({
+          instanceId,
+          mcVersion,
+          loader: "fabric"
+        });
+      }
+      await refreshPacksForInstance({ instanceId, mcVersion });
+    }
+    return { ok: true as const, canceled: false as const, result };
   });
 
   // ---------- Accounts ----------
@@ -256,6 +341,14 @@ export function registerIpc() {
   ipcMain.handle("launch:stop", async (_e, instanceId: string) => {
     if (!instanceId) throw new Error("launch:stop: instanceId missing");
     return stopInstance(instanceId);
+  });
+  ipcMain.handle("launch:diagnose", async (_e, instanceId: string, lines: string[]) => {
+    if (!instanceId) throw new Error("launch:diagnose: instanceId missing");
+    return diagnoseLaunchLogs(lines ?? []);
+  });
+  ipcMain.handle("launch:applyFix", async (_e, instanceId: string, action: LaunchFixAction) => {
+    if (!instanceId) throw new Error("launch:applyFix: instanceId missing");
+    return applyLaunchDiagnosisFix(instanceId, action || "none");
   });
 
   // ---------- Optimizer ----------

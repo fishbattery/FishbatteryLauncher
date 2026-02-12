@@ -83,9 +83,12 @@
           <div class="logs">
             <div class="logsHeader">
               <strong>Logs</strong>
+              <button id="btnAnalyzeLogs" class="btn">Analyze</button>
+              <button id="btnApplyDiagnosisFix" class="btn btnPrimary" disabled>Fix</button>
               <div class="spacer"></div>
               <button id="btnClearLogs" class="btn">Clear</button>
             </div>
+            <div id="launchDiagnosis" class="launchDiagnosis" style="display:none"></div>
             <pre id="logs"></pre>
             <div id="statusText" class="statusText"></div>
           </div>
@@ -185,6 +188,21 @@
               <div class="muted" style="font-size:12px">Instance benchmark (synthetic baseline)</div>
               <div class="row" style="gap:8px">
                 <button id="btnRunBenchmark" class="btn">Run Benchmark</button>
+              </div>
+            </div>
+
+            <div style="height:16px"></div>
+            <div class="field">
+              <label>Servers for this instance</label>
+              <div class="row" style="gap:8px">
+                <input id="serverNameInput" placeholder="Server name (e.g. Friend SMP)" />
+                <input id="serverAddressInput" placeholder="Address (e.g. play.example.com)" />
+                <button id="btnSaveServerEntry" class="btn">Save</button>
+              </div>
+              <div id="serverList" style="margin-top:10px"></div>
+              <div class="row" style="gap:8px; margin-top:8px">
+                <button id="btnExportServerProfile" class="btn">Export Server Profile</button>
+                <button id="btnImportServerProfile" class="btn">Import Server Profile</button>
               </div>
             </div>
           </div>

@@ -25,6 +25,32 @@ declare global {
         | { ok: true; canceled: false; instance: any }
         | { ok: false; canceled: true }
       >;
+      serversList: (instanceId: string) => Promise<{
+        preferredServerId: string | null;
+        servers: Array<{
+          id: string;
+          name: string;
+          address: string;
+          notes?: string;
+          linkedProfile?: string | null;
+          createdAt: number;
+          updatedAt: number;
+        }>;
+      }>;
+      serversUpsert: (
+        instanceId: string,
+        entry: { id?: string; name: string; address: string; notes?: string }
+      ) => Promise<any>;
+      serversRemove: (instanceId: string, serverId: string) => Promise<any>;
+      serversSetPreferred: (instanceId: string, serverId: string | null) => Promise<any>;
+      serversExportProfile: (instanceId: string, serverId: string) => Promise<
+        | { ok: true; canceled: false; path: string }
+        | { ok: false; canceled: true }
+      >;
+      serversImportProfile: (instanceId: string) => Promise<
+        | { ok: true; canceled: false; result: any }
+        | { ok: false; canceled: true }
+      >;
 
       modsList: (instanceId: string) => Promise<any>;
       modsSetEnabled: (instanceId: string, modId: string, enabled: boolean) => Promise<any>;
@@ -86,6 +112,19 @@ declare global {
       ) => Promise<any>;
       launchIsRunning: (instanceId: string) => Promise<boolean>;
       launchStop: (instanceId: string) => Promise<boolean>;
+      launchDiagnose: (instanceId: string, lines: string[]) => Promise<{
+        code: "missing-fabric-loader" | "wrong-java-version" | "mod-mismatch" | "duplicate-mods" | "unknown";
+        severity: "warning" | "critical";
+        summary: string;
+        details: string[];
+        recommendedActions: string[];
+        fixAction: "install-fabric-loader" | "refresh-mods" | "fix-duplicate-mods" | "none";
+        canAutoFix: boolean;
+      }>;
+      launchApplyFix: (
+        instanceId: string,
+        action: "install-fabric-loader" | "refresh-mods" | "fix-duplicate-mods" | "none"
+      ) => Promise<{ ok: boolean; message: string; removed?: string[] }>;
       updaterGetState: () => Promise<{
         status: "idle" | "checking" | "update-available" | "up-to-date" | "downloading" | "downloaded" | "error";
         currentVersion: string;

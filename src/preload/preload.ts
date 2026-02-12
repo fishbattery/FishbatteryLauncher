@@ -21,6 +21,15 @@ contextBridge.exposeInMainWorld("api", {
   instancesOpenFolder: (id: string) => ipcRenderer.invoke("instances:openFolder", id),
   instancesExport: (id: string) => ipcRenderer.invoke("instances:export", id),
   instancesImport: () => ipcRenderer.invoke("instances:import"),
+  serversList: (instanceId: string) => ipcRenderer.invoke("servers:list", instanceId),
+  serversUpsert: (instanceId: string, entry: any) => ipcRenderer.invoke("servers:upsert", instanceId, entry),
+  serversRemove: (instanceId: string, serverId: string) =>
+    ipcRenderer.invoke("servers:remove", instanceId, serverId),
+  serversSetPreferred: (instanceId: string, serverId: string | null) =>
+    ipcRenderer.invoke("servers:setPreferred", instanceId, serverId),
+  serversExportProfile: (instanceId: string, serverId: string) =>
+    ipcRenderer.invoke("servers:exportProfile", instanceId, serverId),
+  serversImportProfile: (instanceId: string) => ipcRenderer.invoke("servers:importProfile", instanceId),
 
   modsList: (instanceId: string) => ipcRenderer.invoke("mods:list", instanceId),
   modsSetEnabled: (instanceId: string, modId: string, enabled: boolean) =>
@@ -66,6 +75,12 @@ contextBridge.exposeInMainWorld("api", {
   ) => ipcRenderer.invoke("launch", instanceId, accountId, runtimePrefs),
   launchIsRunning: (instanceId: string) => ipcRenderer.invoke("launch:isRunning", instanceId),
   launchStop: (instanceId: string) => ipcRenderer.invoke("launch:stop", instanceId),
+  launchDiagnose: (instanceId: string, lines: string[]) =>
+    ipcRenderer.invoke("launch:diagnose", instanceId, lines),
+  launchApplyFix: (
+    instanceId: string,
+    action: "install-fabric-loader" | "refresh-mods" | "fix-duplicate-mods" | "none"
+  ) => ipcRenderer.invoke("launch:applyFix", instanceId, action),
 
   optimizerPreview: (profile: "conservative" | "balanced" | "aggressive") =>
     ipcRenderer.invoke("optimizer:preview", profile),

@@ -32,6 +32,8 @@ type ModMeta = {
   depends: Record<string, string>;
 };
 
+const PROVIDED_DEPENDENCIES = new Set(["minecraft", "fabricloader", "fabric", "java"]);
+
 const KNOWN_CONFLICTS: Array<{ a: string; b: string; reason: string }> = [
   { a: "sodium", b: "embeddium", reason: "Do not install both render engines together." },
   { a: "iris", b: "oculus", reason: "Iris and Oculus target different ecosystems and conflict." },
@@ -57,11 +59,102 @@ function readFabricModJson(filePath: string): ModMeta {
   }
 }
 
+function parseNumericVersion(v: string): number[] | null {
+  const clean = String(v || "").trim();
+  if (!clean) return null;
+  const m = clean.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+  if (!m) return null;
+  return [Number(m[1] || 0), Number(m[2] || 0), Number(m[3] || 0)];
+}
+
+function cmpVersion(a: number[], b: number[]) {
+  for (let i = 0; i < 3; i++) {
+    const av = a[i] ?? 0;
+    const bv = b[i] ?? 0;
+    if (av > bv) return 1;
+    if (av < bv) return -1;
+  }
+  return 0;
+}
+
+function checkSimplePredicate(token: string, mc: number[]): boolean | null {
+  const t = token.trim();
+  if (!t) return null;
+  if (t === "*" || t.toLowerCase() === "x") return true;
+
+  const opMatch = t.match(/^(>=|<=|>|<|=|\^|~)\s*(.+)$/);
+  const op = opMatch?.[1] ?? "=";
+  const rhsRaw = opMatch?.[2] ?? t;
+  const rhs = parseNumericVersion(rhsRaw);
+  if (!rhs) return null;
+
+  const c = cmpVersion(mc, rhs);
+  if (op === ">=") return c >= 0;
+  if (op === "<=") return c <= 0;
+  if (op === ">") return c > 0;
+  if (op === "<") return c < 0;
+  if (op === "=") return c === 0;
+  if (op === "^") return mc[0] === rhs[0] && c >= 0;
+  if (op === "~") return mc[0] === rhs[0] && mc[1] === rhs[1] && c >= 0;
+  return null;
+}
+
+function checkBracketRange(constraint: string, mc: number[]): boolean | null {
+  const m = constraint.trim().match(/^([\[\(])\s*([^,]*)\s*,\s*([^,\]\)]*)\s*([\]\)])$/);
+  if (!m) return null;
+  const lowerInc = m[1] === "[";
+  const upperInc = m[4] === "]";
+  const lower = parseNumericVersion(m[2]);
+  const upper = parseNumericVersion(m[3]);
+  if (!lower && !upper) return null;
+
+  if (lower) {
+    const cl = cmpVersion(mc, lower);
+    if (lowerInc ? cl < 0 : cl <= 0) return false;
+  }
+  if (upper) {
+    const cu = cmpVersion(mc, upper);
+    if (upperInc ? cu > 0 : cu >= 0) return false;
+  }
+  return true;
+}
+
 function simpleConstraintMatch(constraint: string, mcVersion: string) {
-  if (!constraint || constraint === "*" || constraint.includes("*")) return true;
-  if (constraint.includes(mcVersion)) return true;
-  const normalized = constraint.replace(/[\[\]()]/g, "");
-  return normalized.split(",").some((x) => x.trim() === mcVersion);
+  const raw = String(constraint || "").trim();
+  if (!raw || raw === "*" || raw.includes("*")) return true;
+  if (raw.includes(mcVersion)) return true;
+
+  const mc = parseNumericVersion(mcVersion);
+  if (!mc) return true;
+
+  const bracket = checkBracketRange(raw, mc);
+  if (bracket !== null) return bracket;
+
+  const alternatives = raw.split("||").map((x) => x.trim()).filter(Boolean);
+  if (!alternatives.length) return true;
+
+  for (const alt of alternatives) {
+    const tokens = alt
+      .replace(/,/g, " ")
+      .split(/\s+/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (!tokens.length) continue;
+
+    let allOk = true;
+    for (const token of tokens) {
+      const ok = checkSimplePredicate(token, mc);
+      if (ok === null) continue;
+      if (!ok) {
+        allOk = false;
+        break;
+      }
+    }
+    if (allOk) return true;
+  }
+
+  // Unknown syntax should not create false criticals.
+  return true;
 }
 
 export function validateInstanceMods(instanceId: string): ValidationResult {
@@ -125,7 +218,7 @@ export function validateInstanceMods(instanceId: string): ValidationResult {
         }
         continue;
       }
-      if (depId === "fabricloader" || depId === "fabric") continue;
+      if (PROVIDED_DEPENDENCIES.has(depId)) continue;
       if (!byId.has(depId)) {
         issues.push({
           code: "missing-dependency",
