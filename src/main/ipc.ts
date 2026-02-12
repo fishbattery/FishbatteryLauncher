@@ -26,6 +26,9 @@ import type { LaunchRuntimePrefs } from "./launch";
 import { registerContentIpc } from "./content";
 import { exportDiagnosticsZip } from "./diagnostics";
 import { exportInstanceToZip, importInstanceFromZip } from "./instanceTransfer";
+import { buildOptimizerPreview, applyOptimizer, restoreOptimizerDefaults } from "./optimizer";
+import { listBenchmarks, runBenchmark } from "./benchmark";
+import { fixDuplicateMods, validateInstanceMods } from "./modValidation";
 import {
   checkForUpdates,
   downloadUpdate,
@@ -180,6 +183,14 @@ export function registerIpc() {
     if (!modId) throw new Error("mods:setEnabled: modId missing");
     return setModEnabled(instanceId, modId, enabled);
   });
+  ipcMain.handle("mods:validate", async (_e, instanceId: string) => {
+    if (!instanceId) throw new Error("mods:validate: instanceId missing");
+    return validateInstanceMods(instanceId);
+  });
+  ipcMain.handle("mods:fixDuplicates", async (_e, instanceId: string) => {
+    if (!instanceId) throw new Error("mods:fixDuplicates: instanceId missing");
+    return fixDuplicateMods(instanceId);
+  });
 
   // ---------- Packs (recommended resourcepacks/shaderpacks) ----------
   ipcMain.handle("packs:list", async (_e, instanceId: string) => {
@@ -245,6 +256,29 @@ export function registerIpc() {
   ipcMain.handle("launch:stop", async (_e, instanceId: string) => {
     if (!instanceId) throw new Error("launch:stop: instanceId missing");
     return stopInstance(instanceId);
+  });
+
+  // ---------- Optimizer ----------
+  ipcMain.handle("optimizer:preview", async (_e, profile: "conservative" | "balanced" | "aggressive") => {
+    return buildOptimizerPreview(profile || "balanced");
+  });
+  ipcMain.handle("optimizer:apply", async (_e, instanceId: string, profile: "conservative" | "balanced" | "aggressive") => {
+    if (!instanceId) throw new Error("optimizer:apply: instanceId missing");
+    return applyOptimizer(instanceId, profile || "balanced");
+  });
+  ipcMain.handle("optimizer:restore", async (_e, instanceId: string) => {
+    if (!instanceId) throw new Error("optimizer:restore: instanceId missing");
+    return restoreOptimizerDefaults(instanceId);
+  });
+
+  // ---------- Benchmark ----------
+  ipcMain.handle("benchmark:run", async (_e, instanceId: string, profile?: string) => {
+    if (!instanceId) throw new Error("benchmark:run: instanceId missing");
+    return runBenchmark(instanceId, profile || "balanced");
+  });
+  ipcMain.handle("benchmark:list", async (_e, instanceId: string) => {
+    if (!instanceId) throw new Error("benchmark:list: instanceId missing");
+    return listBenchmarks(instanceId);
   });
 
   // ---------- Updater ----------

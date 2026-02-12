@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("mods:setEnabled", instanceId, modId, enabled),
   modsRefresh: (instanceId: string, mcVersion?: string) =>
     ipcRenderer.invoke("mods:refresh", instanceId, mcVersion),
+  modsValidate: (instanceId: string) => ipcRenderer.invoke("mods:validate", instanceId),
+  modsFixDuplicates: (instanceId: string) => ipcRenderer.invoke("mods:fixDuplicates", instanceId),
 
   // ---------- Recommended Packs (Modrinth) ----------
   packsList: (instanceId: string) => ipcRenderer.invoke("packs:list", instanceId),
@@ -64,6 +66,16 @@ contextBridge.exposeInMainWorld("api", {
   ) => ipcRenderer.invoke("launch", instanceId, accountId, runtimePrefs),
   launchIsRunning: (instanceId: string) => ipcRenderer.invoke("launch:isRunning", instanceId),
   launchStop: (instanceId: string) => ipcRenderer.invoke("launch:stop", instanceId),
+
+  optimizerPreview: (profile: "conservative" | "balanced" | "aggressive") =>
+    ipcRenderer.invoke("optimizer:preview", profile),
+  optimizerApply: (instanceId: string, profile: "conservative" | "balanced" | "aggressive") =>
+    ipcRenderer.invoke("optimizer:apply", instanceId, profile),
+  optimizerRestore: (instanceId: string) => ipcRenderer.invoke("optimizer:restore", instanceId),
+
+  benchmarkRun: (instanceId: string, profile?: "conservative" | "balanced" | "aggressive") =>
+    ipcRenderer.invoke("benchmark:run", instanceId, profile),
+  benchmarkList: (instanceId: string) => ipcRenderer.invoke("benchmark:list", instanceId),
 
   updaterGetState: () => ipcRenderer.invoke("updater:getState"),
   updaterGetChannel: () => ipcRenderer.invoke("updater:getChannel"),

@@ -167,6 +167,26 @@
                 Applies curated mods and packs for this instance.
               </div>
             </div>
+
+            <div class="row" style="justify-content:space-between; align-items:center">
+              <div class="muted" style="font-size:12px">One-click hardware optimization</div>
+              <div class="row" style="gap:8px">
+                <select id="optProfile" style="min-width:180px">
+                  <option value="conservative">Conservative</option>
+                  <option value="balanced" selected>Balanced</option>
+                  <option value="aggressive">Aggressive</option>
+                </select>
+                <button id="btnOptimizeInstance" class="btn">Optimize Instance</button>
+                <button id="btnRestoreOptimization" class="btn">Restore Defaults</button>
+              </div>
+            </div>
+
+            <div class="row" style="justify-content:space-between; align-items:center; margin-top:10px">
+              <div class="muted" style="font-size:12px">Instance benchmark (synthetic baseline)</div>
+              <div class="row" style="gap:8px">
+                <button id="btnRunBenchmark" class="btn">Run Benchmark</button>
+              </div>
+            </div>
           </div>
 
           <div id="modalPanelMods" style="display:none">

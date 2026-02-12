@@ -88,6 +88,10 @@ const shaderpacksList = $("shaderpacksList");
 
 const instanceAccount = $("instanceAccount") as HTMLSelectElement;
 const instancePreset = $("instancePreset") as HTMLSelectElement;
+const optProfile = $("optProfile") as HTMLSelectElement;
+const btnOptimizeInstance = $("btnOptimizeInstance");
+const btnRestoreOptimization = $("btnRestoreOptimization");
+const btnRunBenchmark = $("btnRunBenchmark");
 
 let state: any = {
   versions: [],
@@ -601,6 +605,72 @@ async function applyInstancePreset(instanceId: string, mcVersion: string, preset
   }
 }
 
+async function optimizeActiveModalInstance() {
+  const id = editInstanceId;
+  if (!id) {
+    alert("Select an instance first.");
+    return;
+  }
+  const profile = (optProfile.value || "balanced") as "conservative" | "balanced" | "aggressive";
+  const preview = await window.api.optimizerPreview(profile);
+  const yes = confirm(
+    [
+      `Optimize instance with profile "${profile}"?`,
+      "",
+      `Hardware: ${preview.hardware.cpuModel} (${preview.hardware.cpuCores} cores)`,
+      `RAM: ${preview.hardware.totalRamMb} MB`,
+      preview.hardware.gpuModel ? `GPU: ${preview.hardware.gpuModel}` : "GPU: unknown",
+      "",
+      `Will set memory: ${preview.memoryMb} MB`,
+      `GC: ${preview.gc}`,
+      `Will enable mods: ${preview.modsToEnable.join(", ")}`
+    ].join("\n")
+  );
+  if (!yes) return;
+
+  await window.api.optimizerApply(id, profile);
+  state.instances = await window.api.instancesList();
+  await renderInstances();
+  appendLog(`[optimizer] Applied ${profile} optimization.`);
+}
+
+async function restoreActiveModalOptimization() {
+  const id = editInstanceId;
+  if (!id) {
+    alert("Select an instance first.");
+    return;
+  }
+  const yes = confirm("Restore optimizer defaults for this instance?");
+  if (!yes) return;
+  await window.api.optimizerRestore(id);
+  state.instances = await window.api.instancesList();
+  await renderInstances();
+  appendLog("[optimizer] Restored optimization defaults.");
+}
+
+async function runActiveModalBenchmark() {
+  const id = editInstanceId;
+  if (!id) {
+    alert("Select an instance first.");
+    return;
+  }
+  const profile = (optProfile.value || "balanced") as "conservative" | "balanced" | "aggressive";
+  const run = await window.api.benchmarkRun(id, profile);
+  const all = await window.api.benchmarkList(id);
+  const prev = all[1] ?? null;
+  const compare = prev
+    ? `\nCompared to previous: avgFPS ${run.avgFps - prev.avgFps >= 0 ? "+" : ""}${run.avgFps - prev.avgFps}`
+    : "";
+  alert(
+    `Benchmark complete (${run.profile})\n` +
+      `Avg FPS: ${run.avgFps}\n` +
+      `1% Low FPS: ${run.low1Fps}\n` +
+      `Max Memory: ${run.maxMemoryMb} MB\n` +
+      `Duration: ${run.durationMs} ms${compare}`
+  );
+  appendLog(`[benchmark] ${run.avgFps} avg / ${run.low1Fps} low1 / ${run.maxMemoryMb}MB max`);
+}
+
 function renderSettingsPanels() {
   const s = getSettings();
 
@@ -925,6 +995,10 @@ async function pickAndAdd(kind: "mods" | "resourcepacks" | "shaderpacks") {
   }
 
   await renderLocalContent(editInstanceId);
+  if (kind === "mods") {
+    const v = await window.api.modsValidate(editInstanceId);
+    appendLog(`[validation] After add: ${v.summary} (${v.issues.length} issues)`);
+  }
 }
 
 // ---------------- Recommended packs (catalog toggles) ----------------
@@ -1013,6 +1087,61 @@ async function renderCompatibilityGuidance(instanceId: string | null) {
   heading.style.marginBottom = "8px";
   heading.textContent = `Compatibility assistant (${inst.loader}, ${inst.mcVersion})`;
   modalCompatGuidance.appendChild(heading);
+
+  const validation = await window.api.modsValidate(instanceId);
+  const valCard = document.createElement("div");
+  valCard.className = "setRow";
+  valCard.style.marginBottom = "8px";
+
+  const valLeft = document.createElement("div");
+  valLeft.style.display = "flex";
+  valLeft.style.flexDirection = "column";
+
+  const valTitle = document.createElement("div");
+  valTitle.className = "setLabel";
+  valTitle.textContent =
+    validation.summary === "no-issues"
+      ? "Validation: no issues"
+      : validation.summary === "warnings"
+        ? "Validation: warnings"
+        : "Validation: critical conflicts";
+
+  const valSub = document.createElement("div");
+  valSub.className = "setHelp";
+  valSub.textContent = validation.issues.slice(0, 3).map((x) => x.title).join(" • ") || "All clear.";
+  valLeft.appendChild(valTitle);
+  valLeft.appendChild(valSub);
+
+  const valActions = document.createElement("div");
+  valActions.className = "row";
+  valActions.style.justifyContent = "flex-end";
+  valActions.style.gap = "8px";
+
+  const btnRecheck = document.createElement("button");
+  btnRecheck.className = "btn";
+  btnRecheck.textContent = "Re-check";
+  btnRecheck.onclick = () =>
+    guarded(async () => {
+      await renderCompatibilityGuidance(instanceId);
+    });
+  valActions.appendChild(btnRecheck);
+
+  const btnFixDup = document.createElement("button");
+  btnFixDup.className = "btn";
+  btnFixDup.textContent = "Fix duplicates";
+  btnFixDup.onclick = () =>
+    guarded(async () => {
+      const res = await window.api.modsFixDuplicates(instanceId);
+      appendLog(`[validation] Removed duplicate jars: ${res.removed.join(", ") || "none"}`);
+      await renderCompatibilityGuidance(instanceId);
+      await renderInstanceMods(instanceId);
+      await renderLocalContent(instanceId);
+    });
+  valActions.appendChild(btnFixDup);
+
+  valCard.appendChild(valLeft);
+  valCard.appendChild(valActions);
+  modalCompatGuidance.appendChild(valCard);
 
   for (const id of Object.keys(INSTANCE_PRESETS) as Array<Exclude<InstancePresetId, "none">>) {
     const preset = INSTANCE_PRESETS[id];
@@ -1472,9 +1601,22 @@ btnPlayActive.onclick = () =>
     }
 
     const s = getSettings();
+    const validation = await window.api.modsValidate(inst.id);
+    if (validation.summary === "critical") {
+      const detail = validation.issues
+        .slice(0, 8)
+        .map((x) => `- ${x.title}`)
+        .join("\n");
+      const launchAnyway = confirm(
+        `Critical mod conflicts detected:\n${detail}\n\nUse "Update Mods" or fix duplicates first.\nLaunch anyway?`
+      );
+      if (!launchAnyway) return;
+    } else if (validation.summary === "warnings") {
+      appendLog("[validation] Warnings detected. Open Mods tab for details.");
+    }
     appendLog(`[ui] Launching ${inst.name}…`);
     await window.api.launch(inst.id, accountId, {
-      jvmArgs: s.jvmArgs,
+      jvmArgs: inst.jvmArgsOverride || s.jvmArgs,
       preLaunch: s.preLaunch,
       postExit: s.postExit
     });
@@ -1488,6 +1630,9 @@ btnStopActive.onclick = () =>
   });
 
 btnClearLogs.onclick = () => (logsEl.textContent = "");
+btnOptimizeInstance.onclick = () => guarded(async () => optimizeActiveModalInstance());
+btnRestoreOptimization.onclick = () => guarded(async () => restoreActiveModalOptimization());
+btnRunBenchmark.onclick = () => guarded(async () => runActiveModalBenchmark());
 
 modalUpdateMods.onclick = () =>
   guarded(async () => {
@@ -1498,6 +1643,18 @@ modalUpdateMods.onclick = () =>
     await window.api.modsRefresh(inst.id, inst.mcVersion);
     await renderInstanceMods(inst.id);
     await renderLocalContent(inst.id);
+    const v = await window.api.modsValidate(inst.id);
+    appendLog(`[validation] After refresh: ${v.summary} (${v.issues.length} issues)`);
+    if (v.summary === "critical") {
+      const dup = v.issues.filter((x: any) => x.code === "duplicate-mod-id").length;
+      if (dup > 0) {
+        const fix = confirm(`Detected ${dup} duplicate mod conflict(s). Auto-fix duplicates now?`);
+        if (fix) {
+          const r = await window.api.modsFixDuplicates(inst.id);
+          appendLog(`[validation] Removed duplicates: ${r.removed.join(", ") || "none"}`);
+        }
+      }
+    }
     setStatus("");
   });
 

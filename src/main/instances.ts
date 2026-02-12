@@ -12,6 +12,8 @@ export type InstanceConfig = {
   mcVersion: string;        // e.g. "1.21.4" or "25w06a"
   loader: "vanilla" | "fabric";
   instancePreset?: string | null;
+  jvmArgsOverride?: string | null;
+  optimizerBackup?: { memoryMb: number; jvmArgsOverride?: string | null } | null;
   fabricLoaderVersion?: string;
   memoryMb: number;         // e.g. 4096
   createdAt: number;

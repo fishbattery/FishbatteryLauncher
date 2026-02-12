@@ -29,6 +29,11 @@ declare global {
       modsList: (instanceId: string) => Promise<any>;
       modsSetEnabled: (instanceId: string, modId: string, enabled: boolean) => Promise<any>;
       modsRefresh: (instanceId: string, mcVersion?: string) => Promise<any>;
+      modsValidate: (instanceId: string) => Promise<{
+        summary: "no-issues" | "warnings" | "critical";
+        issues: Array<{ code: string; severity: "warning" | "critical" | "ok"; title: string; detail: string }>;
+      }>;
+      modsFixDuplicates: (instanceId: string) => Promise<{ removed: string[] }>;
 
       // Recommended packs (Modrinth)
       packsList: (instanceId: string) => Promise<{
@@ -97,6 +102,46 @@ declare global {
       diagnosticsExport: () => Promise<
         | { ok: true; canceled: false; path: string }
         | { ok: false; canceled: true }
+      >;
+      optimizerPreview: (
+        profile: "conservative" | "balanced" | "aggressive"
+      ) => Promise<{
+        profile: string;
+        hardware: { totalRamMb: number; cpuCores: number; cpuModel: string; gpuModel: string | null };
+        memoryMb: number;
+        jvmArgs: string;
+        gc: "G1GC" | "ZGC";
+        modsToEnable: string[];
+      }>;
+      optimizerApply: (
+        instanceId: string,
+        profile: "conservative" | "balanced" | "aggressive"
+      ) => Promise<any>;
+      optimizerRestore: (instanceId: string) => Promise<boolean>;
+      benchmarkRun: (
+        instanceId: string,
+        profile?: "conservative" | "balanced" | "aggressive"
+      ) => Promise<{
+        id: string;
+        createdAt: string;
+        profile: string;
+        avgFps: number;
+        low1Fps: number;
+        maxMemoryMb: number;
+        durationMs: number;
+        note: string;
+      }>;
+      benchmarkList: (instanceId: string) => Promise<
+        Array<{
+          id: string;
+          createdAt: string;
+          profile: string;
+          avgFps: number;
+          low1Fps: number;
+          maxMemoryMb: number;
+          durationMs: number;
+          note: string;
+        }>
       >;
 
       onLaunchLog: (cb: (line: string) => void) => void;
