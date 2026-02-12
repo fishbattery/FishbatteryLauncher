@@ -105,6 +105,28 @@ const btnSaveServerEntry = $("btnSaveServerEntry");
 const serverList = $("serverList");
 const btnExportServerProfile = $("btnExportServerProfile");
 const btnImportServerProfile = $("btnImportServerProfile");
+const createSourceCustom = $("createSourceCustom");
+const createSourceImport = $("createSourceImport");
+const createSourceModrinth = $("createSourceModrinth");
+const createSourceCurseForge = $("createSourceCurseForge");
+const createSourceHint = $("createSourceHint");
+const createProviderImport = $("createProviderImport");
+const createProviderMarketplace = $("createProviderMarketplace");
+const createProviderMarketplaceTitle = $("createProviderMarketplaceTitle");
+const createProviderMarketplaceHelp = $("createProviderMarketplaceHelp");
+const createModrinthPanel = $("createModrinthPanel");
+const createCurseForgePanel = $("createCurseForgePanel");
+const modrinthSearchInput = $("modrinthSearchInput") as HTMLInputElement;
+const btnModrinthSearch = $("btnModrinthSearch");
+const modrinthResultsLabel = $("modrinthResultsLabel");
+const modrinthSearchResults = $("modrinthSearchResults");
+const btnCreateImportNow = $("btnCreateImportNow");
+const createCustomFields = $("createCustomFields");
+const createFilterReleases = $("createFilterReleases");
+const createFilterSnapshots = $("createFilterSnapshots");
+const createLoaderType = $("createLoaderType") as HTMLSelectElement;
+const createLoaderVersion = $("createLoaderVersion") as HTMLInputElement;
+const createLoaderHint = $("createLoaderHint");
 
 let state: any = {
   versions: [],
@@ -139,6 +161,10 @@ let preflightState: any = null;
 let hasAutoCheckedUpdates = false;
 let promptedUpdateVersion: string | null = null;
 let promptedInstallVersion: string | null = null;
+let createSource: "custom" | "import" | "modrinth" | "curseforge" = "custom";
+let createIncludeReleases = true;
+let createIncludeSnapshots = false;
+let selectedModrinthPack: { projectId: string; title: string; latestVersionId: string | null } | null = null;
 
 // ---------------- Settings ----------------
 type InstancePresetId = "none" | "max-fps" | "shader-friendly" | "distant-horizons-worldgen";
@@ -1907,9 +1933,21 @@ async function renderInstances() {
       modalMode = "edit";
       editInstanceId = i.id;
       modalTitle.textContent = "Edit instance";
+      createIncludeReleases = true;
+      createIncludeSnapshots = true;
+      renderCreateFilterButtons();
+      fillCreateVersionOptions();
       newName.value = i.name ?? "";
       newMem.value = String(i.memoryMb ?? 4096);
       newVersion.value = i.mcVersion ?? "";
+      createLoaderType.value = i.loader === "vanilla" ? "vanilla" : "fabric";
+      createLoaderVersion.value = i.fabricLoaderVersion ?? "";
+      updateCreateLoaderUi();
+      setCreateSource("custom");
+      createSourceCustom.toggleAttribute("disabled", true);
+      createSourceImport.toggleAttribute("disabled", true);
+      createSourceModrinth.toggleAttribute("disabled", true);
+      createSourceCurseForge.toggleAttribute("disabled", true);
       fillInstancePresetDropdown(i.instancePreset ?? "none");
       await fillInstanceAccountDropdown(i.accountId ?? null);
       await renderServerEntries(i.id);
@@ -1999,6 +2037,161 @@ async function fillInstanceAccountDropdown(selectedId: string | null) {
   instanceAccount.value = selectedId ?? "";
 }
 
+function fillCreateVersionOptions() {
+  const includeReleases = createIncludeReleases;
+  const includeSnapshots = createIncludeSnapshots;
+  const current = newVersion.value;
+
+  newVersion.innerHTML = "";
+  const versions = (state.versions ?? []).filter((v: any) => {
+    if (v?.type === "release") return includeReleases;
+    return includeSnapshots;
+  });
+
+  for (const v of versions) {
+    const opt = document.createElement("option");
+    opt.value = v.id;
+    opt.textContent = `${v.id}${v.type === "release" ? "" : ` (${v.type})`}`;
+    newVersion.appendChild(opt);
+  }
+
+  if (current && versions.some((v: any) => v.id === current)) {
+    newVersion.value = current;
+  }
+}
+
+function renderCreateFilterButtons() {
+  createFilterReleases.classList.toggle("active", createIncludeReleases);
+  createFilterSnapshots.classList.toggle("active", createIncludeSnapshots);
+}
+
+function updateCreateLoaderUi() {
+  const loader = createLoaderType.value;
+  if (loader === "fabric") {
+    createLoaderVersion.disabled = false;
+    createLoaderVersion.placeholder = "Auto (recommended)";
+    createLoaderHint.textContent = "Auto-picked for Fabric from official metadata.";
+    return;
+  }
+
+  createLoaderVersion.value = "";
+  createLoaderVersion.disabled = true;
+  if (loader === "vanilla") {
+    createLoaderHint.textContent = "Vanilla instances do not require a loader version.";
+    return;
+  }
+  createLoaderHint.textContent = `${loader} support is planned. Select Fabric/Vanilla for now.`;
+}
+
+function setCreateSource(next: "custom" | "import" | "modrinth" | "curseforge") {
+  createSource = next;
+  const isCustom = next === "custom";
+  const isImport = next === "import";
+  const isMarket = next === "modrinth" || next === "curseforge";
+
+  createSourceCustom.classList.toggle("btnPrimary", next === "custom");
+  createSourceImport.classList.toggle("btnPrimary", next === "import");
+  createSourceModrinth.classList.toggle("btnPrimary", next === "modrinth");
+  createSourceCurseForge.classList.toggle("btnPrimary", next === "curseforge");
+
+  createSourceCustom.classList.toggle("btn", true);
+  createSourceImport.classList.toggle("btn", true);
+  createSourceModrinth.classList.toggle("btn", true);
+  createSourceCurseForge.classList.toggle("btn", true);
+
+  createCustomFields.style.display = isCustom ? "" : "none";
+  createProviderImport.style.display = isImport ? "" : "none";
+  createProviderMarketplace.style.display = isMarket ? "" : "none";
+  createModrinthPanel.style.display = next === "modrinth" ? "" : "none";
+  createCurseForgePanel.style.display = next === "curseforge" ? "" : "none";
+  if (modalMode === "edit") modalCreate.textContent = "Save";
+  else modalCreate.textContent = isCustom ? "Create" : isImport ? "Import" : "Install";
+
+  if (isCustom) {
+    createSourceHint.textContent = "Build a custom instance with manual version + loader selection.";
+    return;
+  }
+  if (isImport) {
+    createSourceHint.textContent = "Import an existing instance/pack archive.";
+    return;
+  }
+  createProviderMarketplaceTitle.textContent =
+    next === "modrinth" ? "Modrinth modpack browser" : "CurseForge modpack browser";
+  createProviderMarketplaceHelp.textContent =
+    next === "modrinth"
+      ? "Browse and install Modrinth modpacks into a new isolated instance."
+      : "CurseForge in-app browser/install is planned next. Use Import for CurseForge zip packs.";
+  createSourceHint.textContent =
+    next === "modrinth"
+      ? "Search Modrinth and install directly to a new instance."
+      : "CurseForge browser is staged. Use Import for now.";
+  if (next === "modrinth" && !modrinthSearchResults.innerHTML) {
+    void guarded(async () => {
+      await runModrinthSearch();
+    });
+  }
+}
+
+async function runModrinthSearch() {
+  const q = String(modrinthSearchInput.value || "").trim();
+  const isPopular = !q;
+  modrinthResultsLabel.textContent = isPopular ? "Popular modpacks" : `Search results for "${q}"`;
+  modrinthSearchResults.innerHTML = '<div class="muted" style="font-size:12px">Searching...</div>';
+  const data = await window.api.modrinthPacksSearch(q, 24);
+  const hits = data?.hits ?? [];
+  if (!hits.length) {
+    modrinthSearchResults.innerHTML = '<div class="muted" style="font-size:12px">No packs found.</div>';
+    return;
+  }
+
+  modrinthSearchResults.innerHTML = "";
+  for (const h of hits) {
+    const row = document.createElement("div");
+    row.className = "modrinthResult";
+
+    const img = document.createElement("img");
+    if (h.iconUrl) img.src = h.iconUrl;
+    img.onerror = () => {
+      img.removeAttribute("src");
+      img.style.opacity = "0.45";
+    };
+    row.appendChild(img);
+
+    const left = document.createElement("div");
+    left.style.display = "flex";
+    left.style.flexDirection = "column";
+    left.style.flex = "1";
+
+    const title = document.createElement("div");
+    title.className = "setLabel";
+    title.textContent = h.title;
+    left.appendChild(title);
+
+    const desc = document.createElement("div");
+    desc.className = "setHelp";
+    desc.textContent = h.description || "No description.";
+    left.appendChild(desc);
+
+    row.appendChild(left);
+
+    const btn = document.createElement("button");
+    btn.className = "btn";
+    const selected = selectedModrinthPack?.projectId === h.projectId;
+    btn.textContent = selected ? "Selected" : "Select";
+    btn.onclick = () => {
+      selectedModrinthPack = {
+        projectId: h.projectId,
+        title: h.title,
+        latestVersionId: h.latestVersionId
+      };
+      void runModrinthSearch();
+    };
+    row.appendChild(btn);
+
+    modrinthSearchResults.appendChild(row);
+  }
+}
+
 // ---------------- Data refresh ----------------
 async function refreshAll() {
   setStatus("Loading…");
@@ -2049,6 +2242,41 @@ accountAdd.onclick = () =>
   });
 
 searchInstances.oninput = () => renderInstances();
+createFilterReleases.onclick = () => {
+  createIncludeReleases = !createIncludeReleases;
+  if (!createIncludeReleases && !createIncludeSnapshots) createIncludeSnapshots = true;
+  renderCreateFilterButtons();
+  fillCreateVersionOptions();
+};
+createFilterSnapshots.onclick = () => {
+  createIncludeSnapshots = !createIncludeSnapshots;
+  if (!createIncludeReleases && !createIncludeSnapshots) createIncludeReleases = true;
+  renderCreateFilterButtons();
+  fillCreateVersionOptions();
+};
+createLoaderType.onchange = () => updateCreateLoaderUi();
+createSourceCustom.onclick = () => setCreateSource("custom");
+createSourceImport.onclick = () => setCreateSource("import");
+createSourceModrinth.onclick = () => setCreateSource("modrinth");
+createSourceCurseForge.onclick = () => setCreateSource("curseforge");
+btnModrinthSearch.onclick = () =>
+  guarded(async () => {
+    await runModrinthSearch();
+  });
+modrinthSearchInput.onkeydown = (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  void guarded(async () => runModrinthSearch());
+};
+btnCreateImportNow.onclick = () =>
+  guarded(async () => {
+    const res = await window.api.instancesImport();
+    if (!res.ok || res.canceled) return;
+    state.instances = await window.api.instancesList();
+    await renderInstances();
+    appendLog(`[instance] Imported "${res.instance?.name ?? "instance"}"`);
+    closeModal();
+  });
 
 btnCreate.onclick = async () => {
   modalMode = "create";
@@ -2058,17 +2286,21 @@ btnCreate.onclick = async () => {
   newName.value = "";
   newMem.value = String(getSettings().defaultMemoryMb ?? 4096);
   fillInstancePresetDropdown("none");
-
-  newVersion.innerHTML = "";
-  const s = getSettings();
-  const versions = (state.versions ?? []).filter((v: any) => (s.showSnapshots ? true : v.type === "release"));
-
-  for (const v of versions) {
-    const opt = document.createElement("option");
-    opt.value = v.id;
-    opt.textContent = v.id;
-    newVersion.appendChild(opt);
-  }
+  createIncludeReleases = true;
+  createIncludeSnapshots = false;
+  renderCreateFilterButtons();
+  fillCreateVersionOptions();
+  createLoaderType.value = "fabric";
+  createLoaderVersion.value = "";
+  updateCreateLoaderUi();
+  setCreateSource("custom");
+  selectedModrinthPack = null;
+  modrinthSearchInput.value = "";
+  modrinthSearchResults.innerHTML = "";
+  createSourceCustom.removeAttribute("disabled");
+  createSourceImport.removeAttribute("disabled");
+  createSourceModrinth.removeAttribute("disabled");
+  createSourceCurseForge.removeAttribute("disabled");
 
   await fillInstanceAccountDropdown(null);
   await renderServerEntries(null);
@@ -2101,33 +2333,85 @@ modalCancel.onclick = closeModal;
 modalCreate.onclick = () =>
   guarded(async () => {
     if (modalMode === "create") {
+      if (createSource === "import") {
+        const res = await window.api.instancesImport();
+        if (!res.ok || res.canceled) return;
+        state.instances = await window.api.instancesList();
+        await renderInstances();
+        appendLog(`[instance] Imported "${res.instance?.name ?? "instance"}"`);
+        closeModal();
+        return;
+      }
+
+      if (createSource === "modrinth" || createSource === "curseforge") {
+        if (createSource === "curseforge") {
+          alert("CurseForge in-app install is not available yet. Use Import for CurseForge zip packs.");
+          return;
+        }
+        if (!selectedModrinthPack) {
+          alert("Select a Modrinth pack first.");
+          return;
+        }
+        setStatus(`Installing ${selectedModrinthPack.title}...`);
+        const res = await window.api.modrinthPacksInstall({
+          projectId: selectedModrinthPack.projectId,
+          versionId: selectedModrinthPack.latestVersionId || undefined,
+          nameOverride: newName.value?.trim() || selectedModrinthPack.title,
+          accountId: instanceAccount.value || null,
+          memoryMb: Number(newMem.value || 6144)
+        });
+        setStatus("");
+        state.instances = await window.api.instancesList();
+        await renderInstances();
+        appendLog(
+          `[modrinth] Installed "${selectedModrinthPack.title}" as "${res.instance?.name}" (${res.version?.versionNumber ?? "latest"}).`
+        );
+        closeModal();
+        return;
+      }
+
       const id = crypto.randomUUID();
       const mcVersion = newVersion.value;
+      const loader = String(createLoaderType.value || "fabric");
       const selectedPreset = (instancePreset.value || "none") as InstancePresetId;
 
-      // ✅ Resolve Fabric loader version up-front (so instance config is complete)
-      setStatus("Resolving Fabric loader…");
-      const fabricLoaderVersion = await window.api.fabricPickLoader(mcVersion);
+      if (!mcVersion) {
+        alert("Select a Minecraft version first.");
+        return;
+      }
+      if (!["vanilla", "fabric"].includes(loader)) {
+        alert(`${loader} support is not implemented yet. Select Vanilla or Fabric for now.`);
+        return;
+      }
 
       const cfg = {
         id,
         name: newName.value?.trim() || "New Instance",
         mcVersion,
-        loader: "fabric",
-        fabricLoaderVersion,
+        loader: loader as "vanilla" | "fabric",
+        fabricLoaderVersion: undefined as string | undefined,
         memoryMb: Number(newMem.value || 4096),
         accountId: instanceAccount.value || null,
         instancePreset: selectedPreset
       };
 
+      if (loader === "fabric") {
+        setStatus("Resolving Fabric loader…");
+        cfg.fabricLoaderVersion = (createLoaderVersion.value || "").trim() || (await window.api.fabricPickLoader(mcVersion));
+      }
+
       setStatus("Creating instance…");
       await window.api.instancesCreate(cfg);
 
-      // ✅ Install Fabric immediately so first launch works
-      setStatus("Installing Fabric…");
-      await window.api.fabricInstall(id, mcVersion, fabricLoaderVersion);
+      if (loader === "fabric" && cfg.fabricLoaderVersion) {
+        setStatus("Installing Fabric…");
+        await window.api.fabricInstall(id, mcVersion, cfg.fabricLoaderVersion);
+      } else {
+        setStatus("Preparing Vanilla assets…");
+        await window.api.vanillaInstall(mcVersion);
+      }
 
-      if (selectedPreset !== "none") {
+      if (selectedPreset !== "none" && loader === "fabric") {
         await applyInstancePreset(id, mcVersion, selectedPreset);
       }
 
@@ -2141,15 +2425,45 @@ modalCreate.onclick = () =>
     if (modalMode === "edit" && editInstanceId) {
       const selectedPreset = (instancePreset.value || "none") as InstancePresetId;
       const inst = (state.instances?.instances ?? []).find((x: any) => x.id === editInstanceId) ?? null;
+      const nextLoaderRaw = String(createLoaderType.value || inst?.loader || "fabric");
+      if (!["vanilla", "fabric"].includes(nextLoaderRaw)) {
+        alert(`${nextLoaderRaw} support is not implemented yet. Select Vanilla or Fabric for now.`);
+        return;
+      }
+      const nextLoader = nextLoaderRaw as "vanilla" | "fabric";
+      const nextVersion = newVersion.value || inst?.mcVersion;
+      if (!nextVersion) {
+        alert("Select a Minecraft version first.");
+        return;
+      }
+
+      let nextFabricLoaderVersion: string | undefined = undefined;
+      if (nextLoader === "fabric") {
+        nextFabricLoaderVersion = (createLoaderVersion.value || "").trim() || (await window.api.fabricPickLoader(nextVersion));
+      }
+
       await window.api.instancesUpdate(editInstanceId, {
         name: newName.value?.trim() || "Instance",
+        mcVersion: nextVersion,
+        loader: nextLoader,
+        fabricLoaderVersion: nextFabricLoaderVersion,
         memoryMb: Number(newMem.value || 4096),
         accountId: instanceAccount.value || null,
         instancePreset: selectedPreset
       });
-      if (inst && selectedPreset !== "none") {
-        await applyInstancePreset(editInstanceId, inst.mcVersion, selectedPreset);
+
+      if (nextLoader === "fabric" && nextFabricLoaderVersion) {
+        setStatus("Installing Fabric…");
+        await window.api.fabricInstall(editInstanceId, nextVersion, nextFabricLoaderVersion);
+      } else {
+        setStatus("Preparing Vanilla assets…");
+        await window.api.vanillaInstall(nextVersion);
       }
+
+      if (inst && selectedPreset !== "none") {
+        await applyInstancePreset(editInstanceId, nextVersion, selectedPreset);
+      }
+      setStatus("");
       state.instances = await window.api.instancesList();
       await renderInstances();
       closeModal();

@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("api", {
   instancesOpenFolder: (id: string) => ipcRenderer.invoke("instances:openFolder", id),
   instancesExport: (id: string) => ipcRenderer.invoke("instances:export", id),
   instancesImport: () => ipcRenderer.invoke("instances:import"),
+  modrinthPacksSearch: (query: string, limit?: number) => ipcRenderer.invoke("modrinthPacks:search", query, limit),
+  modrinthPacksInstall: (payload: any) => ipcRenderer.invoke("modrinthPacks:install", payload),
   lockfileGenerate: (instanceId: string) => ipcRenderer.invoke("lockfile:generate", instanceId),
   lockfileDrift: (instanceId: string) => ipcRenderer.invoke("lockfile:drift", instanceId),
   serversList: (instanceId: string) => ipcRenderer.invoke("servers:list", instanceId),
@@ -68,6 +70,7 @@ contextBridge.exposeInMainWorld("api", {
   fabricPickLoader: (mcVersion: string) => ipcRenderer.invoke("fabric:pickLoader", mcVersion),
   fabricInstall: (instanceId: string, mcVersion: string, loaderVersion: string) =>
     ipcRenderer.invoke("fabric:install", instanceId, mcVersion, loaderVersion),
+  vanillaInstall: (mcVersion: string) => ipcRenderer.invoke("vanilla:install", mcVersion),
 
   // ✅ IDs only
   launch: (

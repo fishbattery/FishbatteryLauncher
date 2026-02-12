@@ -28,6 +28,7 @@ import { exportDiagnosticsZip } from "./diagnostics";
 import { getLastPreflightChecks, runPreflightChecks } from "./preflight";
 import { exportInstanceToZip, importInstanceFromZip } from "./instanceTransfer";
 import { checkInstanceLockfileDrift, generateInstanceLockfile } from "./instanceLockfile";
+import { installModrinthModpack, searchModrinthModpacks } from "./modrinthPacks";
 import { buildOptimizerPreview, applyOptimizer, restoreOptimizerDefaults } from "./optimizer";
 import { listBenchmarks, runBenchmark } from "./benchmark";
 import { fixDuplicateMods, validateInstanceMods } from "./modValidation";
@@ -131,6 +132,21 @@ export function registerIpc() {
 
     const imported = await importInstanceFromZip(picked.filePaths[0]);
     return { ok: true as const, canceled: false as const, ...imported };
+  });
+
+  ipcMain.handle("modrinthPacks:search", async (_e, query: string, limit?: number) => {
+    return searchModrinthModpacks(String(query ?? ""), Number(limit ?? 24));
+  });
+
+  ipcMain.handle("modrinthPacks:install", async (_e, payload: any) => {
+    if (!payload?.projectId) throw new Error("modrinthPacks:install: projectId missing");
+    return installModrinthModpack({
+      projectId: String(payload.projectId),
+      versionId: payload.versionId ? String(payload.versionId) : undefined,
+      nameOverride: payload.nameOverride ? String(payload.nameOverride) : undefined,
+      accountId: payload.accountId ?? null,
+      memoryMb: Number(payload.memoryMb || 6144)
+    });
   });
 
   ipcMain.handle("lockfile:generate", async (_e, instanceId: string) => {

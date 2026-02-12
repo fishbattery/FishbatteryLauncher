@@ -7,7 +7,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self';
         connect-src https: http://localhost:5173 ws://localhost:5173;
-        img-src 'self' data: https://crafatar.com https://mc-heads.net;
+        img-src 'self' data: https://crafatar.com https://mc-heads.net https://*.modrinth.com;
         style-src 'self' 'unsafe-inline';
         script-src 'self' 'unsafe-inline'"
     />
@@ -144,6 +144,50 @@
 
           <div id="modalPanelGeneral">
             <div class="field">
+              <label>Creation source</label>
+              <div class="sourceTabs">
+                <button id="createSourceCustom" class="btn btnPrimary" type="button">Custom</button>
+                <button id="createSourceImport" class="btn" type="button">Import</button>
+                <button id="createSourceModrinth" class="btn" type="button">Modrinth</button>
+                <button id="createSourceCurseForge" class="btn" type="button">CurseForge</button>
+              </div>
+              <div id="createSourceHint" class="muted" style="font-size:12px; margin-top:6px">
+                Build a custom instance with manual version + loader selection.
+              </div>
+            </div>
+
+            <div id="createProviderImport" class="setRow" style="display:none">
+              <div>
+                <div class="setLabel">Import existing instance/pack</div>
+                <div class="setHelp">Supports current launcher import zip flow.</div>
+              </div>
+              <button id="btnCreateImportNow" class="btn" type="button">Choose file and import</button>
+            </div>
+
+            <div id="createProviderMarketplace" class="setRow" style="display:none">
+              <div>
+                <div id="createProviderMarketplaceTitle" class="setLabel">Pack browser</div>
+                <div id="createProviderMarketplaceHelp" class="setHelp">
+                  Browse and install Modrinth modpacks into a new isolated instance.
+                </div>
+                <div id="createModrinthPanel" style="margin-top:10px; display:none">
+                  <div class="row" style="gap:8px; justify-content:flex-start">
+                    <input id="modrinthSearchInput" class="setControl" placeholder="Search Modrinth modpacks..." style="min-width:260px; flex:1; max-width:none" />
+                    <button id="btnModrinthSearch" class="btn" type="button">Search</button>
+                  </div>
+                  <div id="modrinthResultsLabel" class="setHelp" style="margin-top:8px">Popular modpacks</div>
+                  <div id="modrinthSearchResults" style="margin-top:10px; max-height:230px; overflow:auto"></div>
+                </div>
+                <div id="createCurseForgePanel" style="margin-top:10px; display:none">
+                  <div class="setHelp">
+                    CurseForge in-app browser/install is planned next. Use Import for CurseForge zip packs in this build.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="createCustomFields">
+            <div class="field">
               <label>Name</label>
               <input id="newName" placeholder="Enter a name for your instance" />
             </div>
@@ -160,10 +204,34 @@
               <div class="field" style="flex:1">
                 <label>Game version</label>
                 <select id="newVersion"></select>
+                <div class="row" style="justify-content:flex-start; gap:8px; margin-top:8px">
+                  <button id="createFilterReleases" class="filterToggle active" type="button">Releases</button>
+                  <button id="createFilterSnapshots" class="filterToggle" type="button">Snapshots</button>
+                </div>
               </div>
               <div class="field" style="width:160px">
                 <label>Memory (MB)</label>
                 <input id="newMem" placeholder="4096" />
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="field" style="flex:1">
+                <label>Mod loader</label>
+                <select id="createLoaderType">
+                  <option value="vanilla">Vanilla</option>
+                  <option value="fabric" selected>Fabric</option>
+                  <option value="quilt">Quilt (coming soon)</option>
+                  <option value="forge">Forge (coming soon)</option>
+                  <option value="neoforge">NeoForge (coming soon)</option>
+                </select>
+              </div>
+              <div class="field" style="flex:1">
+                <label>Loader version</label>
+                <input id="createLoaderVersion" placeholder="Auto (recommended)" disabled />
+                <div id="createLoaderHint" class="muted" style="font-size:12px; margin-top:6px">
+                  Auto-picked for Fabric from official metadata.
+                </div>
               </div>
             </div>
 
@@ -208,6 +276,7 @@
                 <button id="btnExportServerProfile" class="btn">Export Server Profile</button>
                 <button id="btnImportServerProfile" class="btn">Import Server Profile</button>
               </div>
+            </div>
             </div>
           </div>
 

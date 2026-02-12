@@ -45,6 +45,25 @@ declare global {
           }
         | { ok: false; canceled: true }
       >;
+      modrinthPacksSearch: (
+        query: string,
+        limit?: number
+      ) => Promise<{
+        hits: Array<{
+          projectId: string;
+          title: string;
+          description: string;
+          iconUrl: string | null;
+          latestVersionId: string | null;
+        }>;
+      }>;
+      modrinthPacksInstall: (payload: {
+        projectId: string;
+        versionId?: string;
+        nameOverride?: string;
+        accountId?: string | null;
+        memoryMb?: number;
+      }) => Promise<{ instance: any; version: { id: string; name: string; versionNumber: string } }>;
       lockfileGenerate: (instanceId: string) => Promise<{
         generatedAt: string;
         artifacts: number;
@@ -144,6 +163,7 @@ declare global {
 
       fabricPickLoader: (mcVersion: string) => Promise<string>;
       fabricInstall: (instanceId: string, mcVersion: string, loaderVersion: string) => Promise<any>;
+      vanillaInstall: (mcVersion: string) => Promise<any>;
 
       // ✅ IDs only
       launch: (
