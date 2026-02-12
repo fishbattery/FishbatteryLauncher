@@ -54,7 +54,7 @@
     "compression": "maximum",
     "win": {
       "target": [
-        "portable"
+        "nsis"
       ],
       "requestedExecutionLevel": "asInvoker"
     },
