@@ -243,6 +243,14 @@ body{
   border-bottom: 1px solid rgba(255,255,255,.03);
 }
 .dropdownItem:hover{ background: rgba(255,255,255,.03); }
+.dropdownItem.active{
+  background: rgba(61,220,132,.12);
+  box-shadow: inset 0 0 0 1px rgba(61,220,132,.28);
+}
+.dropdownItem:focus-visible{
+  outline: 1px solid rgba(61,220,132,.55);
+  outline-offset: -1px;
+}
 .dropdownItem:last-child{ border-bottom: 0; }
 
 .dropdownItem .left{ display:flex; gap: 10px; align-items:center; }

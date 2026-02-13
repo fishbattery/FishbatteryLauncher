@@ -1566,7 +1566,7 @@ async function findPreferredServerTarget() {
 
 async function launchForInstance(inst: any, serverAddress?: string) {
   const accounts = state.accounts?.accounts ?? [];
-  const accountId = inst.accountId || state.accounts?.activeAccountId || (accounts[0]?.id ?? null);
+  const accountId = inst.accountId || state.accounts?.activeId || (accounts[0]?.id ?? null);
   if (!accountId) {
     appendLog("[ui] No account selected.");
     return;
@@ -2118,7 +2118,7 @@ function fallbackAvatarDataUrl(label: string) {
 
 async function renderAccounts() {
   const accounts = state.accounts?.accounts ?? [];
-  const activeId = state.accounts?.activeAccountId ?? null;
+  const activeId = state.accounts?.activeId ?? null;
   const avatarById = new Map<string, string | null>();
 
   accountItems.innerHTML = "";
@@ -2154,6 +2154,8 @@ async function renderAccounts() {
   for (const a of accounts) {
     const item = document.createElement("div");
     item.className = "dropdownItem";
+    if (a.id === activeId) item.classList.add("active");
+    item.tabIndex = 0;
 
     const left = document.createElement("div");
     left.className = "left";
@@ -2217,11 +2219,20 @@ async function renderAccounts() {
     item.appendChild(left);
     item.appendChild(right);
 
-    item.onclick = async () => {
+    const selectAccount = async () => {
       await window.api.accountsSetActive(a.id);
       state.accounts = await window.api.accountsList();
       await renderAccounts();
       accountDropdown.classList.remove("open");
+    };
+
+    item.onclick = async () => {
+      await selectAccount();
+    };
+    item.onkeydown = async (ev: KeyboardEvent) => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      ev.preventDefault();
+      await selectAccount();
     };
 
     accountItems.appendChild(item);
