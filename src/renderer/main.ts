@@ -186,6 +186,7 @@ let preflightState: any = null;
 let hasAutoCheckedUpdates = false;
 let promptedUpdateVersion: string | null = null;
 let promptedInstallVersion: string | null = null;
+let accountAvatarWarmupInFlight = false;
 let createSource: "custom" | "import" | "modrinth" | "curseforge" | "technic" | "atlauncher" | "ftb" = "custom";
 let createIncludeReleases = true;
 let createIncludeSnapshots = false;
@@ -2124,9 +2125,10 @@ async function renderAccounts() {
   await Promise.all(
     accounts.map(async (a: any) => {
       try {
-        avatarById.set(a.id, await window.api.accountsGetAvatar(a.id));
+        const cached = await window.api.accountsGetAvatar(a.id, false);
+        avatarById.set(a.id, cached || fallbackAvatarDataUrl(getAccountLabel(a)));
       } catch {
-        avatarById.set(a.id, null);
+        avatarById.set(a.id, fallbackAvatarDataUrl(getAccountLabel(a)));
       }
     })
   );
@@ -2134,14 +2136,18 @@ async function renderAccounts() {
   if (!accounts.length) {
     accountName.textContent = "Not signed in";
     accountSub.textContent = "Add an account";
+    accountAvatarImg.classList.add("loaded");
     accountAvatarImg.src = fallbackAvatarDataUrl("?");
   } else {
     const active = accounts.find((a: any) => a.id === activeId) ?? accounts[0];
     accountName.textContent = getAccountLabel(active);
     accountSub.textContent = active?.type ?? active?.provider ?? "Microsoft";
+    accountAvatarImg.classList.remove("loaded");
+    accountAvatarImg.onload = () => accountAvatarImg.classList.add("loaded");
     accountAvatarImg.src = avatarById.get(active.id) || fallbackAvatarDataUrl(getAccountLabel(active));
   }
   accountAvatarImg.onerror = () => {
+    accountAvatarImg.classList.add("loaded");
     accountAvatarImg.src = fallbackAvatarDataUrl(accountName.textContent || "?");
   };
 
@@ -2155,8 +2161,11 @@ async function renderAccounts() {
     const av = document.createElement("span");
     av.className = "avatar";
     const img = document.createElement("img");
+    img.classList.remove("loaded");
+    img.onload = () => img.classList.add("loaded");
     img.src = avatarById.get(a.id) || fallbackAvatarDataUrl(getAccountLabel(a));
     img.onerror = () => {
+      img.classList.add("loaded");
       img.src = fallbackAvatarDataUrl(getAccountLabel(a));
     };
     av.appendChild(img);
@@ -2168,7 +2177,7 @@ async function renderAccounts() {
 
     const title = document.createElement("strong");
     title.style.fontSize = "13px";
-    title.textContent = getAccountLabel(a) + (a.id === activeId ? " ✓" : "");
+    title.textContent = getAccountLabel(a) + (a.id === activeId ? " (active)" : "");
 
     const sub = document.createElement("small");
     sub.className = "muted";
@@ -2184,19 +2193,26 @@ async function renderAccounts() {
     const right = document.createElement("div");
     right.className = "right";
 
-    const btnRefreshAvatar = document.createElement("button");
-    btnRefreshAvatar.className = "iconBtn";
-    btnRefreshAvatar.title = "Refresh skin";
-    btnRefreshAvatar.textContent = "↻";
-    btnRefreshAvatar.onclick = (e) => {
+    const btnRemoveAccount = document.createElement("button");
+    btnRemoveAccount.className = "accountTrashBtn";
+    btnRemoveAccount.title = "Remove account";
+    btnRemoveAccount.setAttribute("aria-label", "Remove account");
+    btnRemoveAccount.innerHTML =
+      '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">' +
+      '<path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9z"/>' +
+      '<path fill="currentColor" d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7z"/>' +
+      "</svg>";
+    btnRemoveAccount.onclick = (e) => {
       e.stopPropagation();
       void guarded(async () => {
-        await window.api.accountsGetAvatar(a.id, true);
+        const ok = confirm(`Remove account "${getAccountLabel(a)}"?`);
+        if (!ok) return;
+        await window.api.accountsRemove(a.id);
         state.accounts = await window.api.accountsList();
         await renderAccounts();
       });
     };
-    right.appendChild(btnRefreshAvatar);
+    right.appendChild(btnRemoveAccount);
 
     item.appendChild(left);
     item.appendChild(right);
@@ -2209,6 +2225,25 @@ async function renderAccounts() {
     };
 
     accountItems.appendChild(item);
+  }
+
+  if (accounts.length && !accountAvatarWarmupInFlight) {
+    accountAvatarWarmupInFlight = true;
+    void (async () => {
+      let updated = false;
+      for (const a of accounts) {
+        try {
+          const cached = await window.api.accountsGetAvatar(a.id, false);
+          if (cached) continue;
+          const fresh = await window.api.accountsGetAvatar(a.id, true);
+          if (fresh) updated = true;
+        } catch {
+          // keep fallback
+        }
+      }
+      accountAvatarWarmupInFlight = false;
+      if (updated) await renderAccounts();
+    })();
   }
 }
 

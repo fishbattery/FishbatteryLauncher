@@ -5,6 +5,7 @@ import { Auth } from "msmc";
 import fs from "node:fs";
 import path from "node:path";
 import fetch from "node-fetch";
+import { nativeImage } from "electron";
 
 export type StoredAccount = {
   id: string; // UUID
@@ -169,16 +170,43 @@ function readAvatarDataUrl(p: string): string | null {
   }
 }
 
-async function fetchAvatarToCache(uuid: string, outPath: string) {
+async function fetchAvatarToCache(uuid: string, username: string, outPath: string) {
   const compact = String(uuid || "").replace(/-/g, "");
   if (!compact) throw new Error("Account UUID missing");
-  const url = `https://crafatar.com/avatars/${encodeURIComponent(compact)}?size=128&overlay`;
-  const res = await fetch(url, { headers: { "User-Agent": "FishbatteryLauncher/0.2.1" } });
-  if (!res.ok) throw new Error(`Avatar fetch failed (${res.status})`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (!buf.length) throw new Error("Avatar response was empty");
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, buf);
+  const safeName = String(username || "").trim();
+  const urls = [
+    `https://crafatar.com/avatars/${encodeURIComponent(compact)}?size=128&overlay`,
+    `https://mc-heads.net/avatar/${encodeURIComponent(compact)}/128`,
+    safeName ? `https://mc-heads.net/avatar/${encodeURIComponent(safeName)}/128` : ""
+  ].filter(Boolean);
+
+  let lastErr: string | null = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": "FishbatteryLauncher/0.2.1" } });
+      if (!res.ok) {
+        lastErr = `${url} -> ${res.status}`;
+        continue;
+      }
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (!buf.length) {
+        lastErr = `${url} -> empty`;
+        continue;
+      }
+      const img = nativeImage.createFromBuffer(buf);
+      if (img.isEmpty()) {
+        lastErr = `${url} -> decode failed`;
+        continue;
+      }
+      fs.mkdirSync(path.dirname(outPath), { recursive: true });
+      fs.writeFileSync(outPath, img.resize({ width: 128, height: 128, quality: "best" }).toPNG());
+      return;
+    } catch (e: any) {
+      lastErr = `${url} -> ${String(e?.message ?? e)}`;
+    }
+  }
+
+  throw new Error(`Avatar fetch failed (${lastErr || "unknown"})`);
 }
 
 export async function getAccountAvatarDataUrl(id: string, refresh = false): Promise<string | null> {
@@ -186,16 +214,14 @@ export async function getAccountAvatarDataUrl(id: string, refresh = false): Prom
   if (!account?.id) return null;
   const p = avatarPathFor(account.id);
 
-  if (!refresh) {
-    const cached = readAvatarDataUrl(p);
-    if (cached) return cached;
-  }
+  const cached = readAvatarDataUrl(p);
+  if (!refresh) return cached;
 
   try {
-    await fetchAvatarToCache(account.id, p);
+    await fetchAvatarToCache(account.id, account.username, p);
   } catch {
     // best effort: fall back to cached value when API is unavailable
   }
 
-  return readAvatarDataUrl(p);
+  return readAvatarDataUrl(p) || cached;
 }
