@@ -19,6 +19,15 @@ function normalizeExt(name: string) {
   return ALLOWED_EXT.has(ext) ? ext : ".png";
 }
 
+function escapeXml(text: string) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 export type InstanceIconTransform = {
   scale?: number;
   offsetXPct?: number;
@@ -96,6 +105,7 @@ export function setInstanceIconFallback(instanceId: string, label: string, theme
       ? { a: "#12406b", b: "#1d6db8", c: "#d9f0ff" }
       : { a: "#124e3a", b: "#1d8d67", c: "#e6fff5" };
 
+  const safeText = escapeXml(text);
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <defs>
@@ -105,16 +115,20 @@ export function setInstanceIconFallback(instanceId: string, label: string, theme
     </linearGradient>
   </defs>
   <rect width="256" height="256" rx="38" fill="url(#g)"/>
-  <text x="128" y="148" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="88" font-weight="700" fill="${colors.c}">${text}</text>
+  <text x="128" y="148" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="88" font-weight="700" fill="${colors.c}">${safeText}</text>
 </svg>`;
 
-  const svgDataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-  const rendered = nativeImage.createFromDataURL(svgDataUrl);
-  if (rendered.isEmpty()) throw new Error("Could not render fallback icon");
-  const png = rendered.resize({ width: 256, height: 256, quality: "best" }).toPNG();
   const out = iconPath(instanceId);
   ensureDir(path.dirname(out));
-  fs.writeFileSync(out, png);
+  const svgDataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  const rendered = nativeImage.createFromDataURL(svgDataUrl);
+  if (!rendered.isEmpty()) {
+    const png = rendered.resize({ width: 256, height: 256, quality: "best" }).toPNG();
+    fs.writeFileSync(out, png);
+    return out;
+  }
+  // Fallback: persist SVG bytes; getInstanceIconDataUrl handles SVG payloads.
+  fs.writeFileSync(out, Buffer.from(svg, "utf8"));
   return out;
 }
 

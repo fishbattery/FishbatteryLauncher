@@ -163,6 +163,23 @@ declare global {
       modsList: (instanceId: string) => Promise<any>;
       modsSetEnabled: (instanceId: string, modId: string, enabled: boolean) => Promise<any>;
       modsRefresh: (instanceId: string, mcVersion?: string) => Promise<any>;
+      modsPlanRefresh: (instanceId: string, mcVersion?: string) => Promise<{
+        checkedAt: number;
+        updates: Array<{
+          id: string;
+          name: string;
+          severity: "safe" | "caution" | "breaking";
+          fromVersion: string | null;
+          toVersion: string | null;
+          changelog: string;
+          dependencyAdded: string[];
+          dependencyRemoved: string[];
+          reason: string;
+        }>;
+        blocked: Array<{ id: string; name: string; reason: string }>;
+        counts: { safe: number; caution: number; breaking: number };
+      }>;
+      modsRefreshSelected: (instanceId: string, mcVersion: string, selectedIds: string[]) => Promise<any>;
       modsValidate: (instanceId: string) => Promise<{
         summary: "no-issues" | "warnings" | "critical";
         issues: Array<{

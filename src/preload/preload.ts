@@ -60,6 +60,10 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("mods:setEnabled", instanceId, modId, enabled),
   modsRefresh: (instanceId: string, mcVersion?: string) =>
     ipcRenderer.invoke("mods:refresh", instanceId, mcVersion),
+  modsPlanRefresh: (instanceId: string, mcVersion?: string) =>
+    ipcRenderer.invoke("mods:planRefresh", instanceId, mcVersion),
+  modsRefreshSelected: (instanceId: string, mcVersion: string, selectedIds: string[]) =>
+    ipcRenderer.invoke("mods:refreshSelected", instanceId, mcVersion, selectedIds),
   modsValidate: (instanceId: string) => ipcRenderer.invoke("mods:validate", instanceId),
   modsFixDuplicates: (instanceId: string) => ipcRenderer.invoke("mods:fixDuplicates", instanceId),
 

@@ -25,8 +25,30 @@ export type ResolvedMod = {
   downloadUrl?: string;
   sha1?: string;
   sha512?: string;
+  requiredProjectIds?: string[];
   error?: string;
   lastCheckedAt?: number;
+};
+
+export type ModUpdateSeverity = "safe" | "caution" | "breaking";
+
+export type PlannedModUpdate = {
+  id: string;
+  name: string;
+  severity: ModUpdateSeverity;
+  fromVersion: string | null;
+  toVersion: string | null;
+  changelog: string;
+  dependencyAdded: string[];
+  dependencyRemoved: string[];
+  reason: string;
+};
+
+export type ModUpdatePlan = {
+  checkedAt: number;
+  updates: PlannedModUpdate[];
+  blocked: Array<{ id: string; name: string; reason: string }>;
+  counts: { safe: number; caution: number; breaking: number };
 };
 
 function defaultState(): ModsState {
@@ -106,6 +128,131 @@ function targetFileName(catalogId: string, upstreamFileName: string, enabled: bo
   return enabled ? base : base + ".disabled";
 }
 
+function parseMajor(version: string | null | undefined): number | null {
+  if (!version) return null;
+  const m = String(version).match(/(\d+)/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeChangelog(s: string | null | undefined) {
+  const oneLine = String(s || "")
+    .replace(/[`*_#>\-\[\]\(\)!]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!oneLine) return "No changelog provided.";
+  return oneLine.slice(0, 220);
+}
+
+function addDepDiff(
+  currentDeps: string[] | undefined,
+  latestDeps: string[] | undefined
+): { added: string[]; removed: string[] } {
+  const cur = new Set((currentDeps || []).map(String));
+  const nxt = new Set((latestDeps || []).map(String));
+  const added = [...nxt].filter((x) => !cur.has(x));
+  const removed = [...cur].filter((x) => !nxt.has(x));
+  return { added, removed };
+}
+
+export async function planModRefreshForInstance(opts: {
+  instanceId: string;
+  mcVersion: string;
+  loader: "fabric";
+}): Promise<ModUpdatePlan> {
+  const state = loadModsState(opts.instanceId);
+  const updates: PlannedModUpdate[] = [];
+  const blocked: Array<{ id: string; name: string; reason: string }> = [];
+
+  for (const mod of CATALOG) {
+    const enabled = mod.required ? true : !!state.enabled[mod.id];
+    if (!enabled) continue;
+
+    const current = state.resolved?.[mod.id];
+    try {
+      const latest = await resolveLatestModrinth({
+        projectId: mod.source.projectId,
+        mcVersion: opts.mcVersion,
+        loader: "fabric"
+      });
+
+      if (!latest) {
+        blocked.push({
+          id: mod.id,
+          name: mod.name,
+          reason: `No compatible Fabric build found for Minecraft ${opts.mcVersion}.`
+        });
+        continue;
+      }
+
+      const sameByHash = !!(current?.sha1 && latest.sha1 && current.sha1 === latest.sha1);
+      const sameByVersionAndFile =
+        !!current?.versionName &&
+        current.versionName === latest.versionName &&
+        !!current?.upstreamFileName &&
+        current.upstreamFileName === latest.fileName;
+      if (sameByHash || sameByVersionAndFile) continue;
+
+      let severity: ModUpdateSeverity = "safe";
+      const reasonBits: string[] = [];
+
+      if (!current || current.status !== "ok") {
+        severity = "caution";
+        reasonBits.push("Mod not currently resolved cleanly");
+      }
+
+      const fromMajor = parseMajor(current?.versionName ?? null);
+      const toMajor = parseMajor(latest.versionName);
+      if (fromMajor !== null && toMajor !== null && toMajor > fromMajor) {
+        severity = severity === "breaking" ? severity : "caution";
+        reasonBits.push(`Major version bump (${fromMajor} -> ${toMajor})`);
+      }
+
+      const depDiff = addDepDiff(current?.requiredProjectIds, latest.requiredProjectIds);
+      if (depDiff.added.length || depDiff.removed.length) {
+        severity = severity === "breaking" ? severity : "caution";
+        if (depDiff.added.length) reasonBits.push(`Dependency additions: ${depDiff.added.join(", ")}`);
+        if (depDiff.removed.length) reasonBits.push(`Dependency removals: ${depDiff.removed.join(", ")}`);
+      }
+
+      updates.push({
+        id: mod.id,
+        name: mod.name,
+        severity,
+        fromVersion: current?.versionName ?? null,
+        toVersion: latest.versionName ?? null,
+        changelog: normalizeChangelog(latest.changelog),
+        dependencyAdded: depDiff.added,
+        dependencyRemoved: depDiff.removed,
+        reason: reasonBits.join(" | ") || "Compatible update available"
+      });
+    } catch (e: any) {
+      blocked.push({
+        id: mod.id,
+        name: mod.name,
+        reason: String(e?.message ?? e)
+      });
+    }
+  }
+
+  const rank: Record<ModUpdateSeverity, number> = { breaking: 3, caution: 2, safe: 1 };
+  updates.sort((a, b) => rank[b.severity] - rank[a.severity] || a.name.localeCompare(b.name));
+
+  const counts = {
+    safe: updates.filter((x) => x.severity === "safe").length,
+    caution: updates.filter((x) => x.severity === "caution").length,
+    breaking: updates.filter((x) => x.severity === "breaking").length
+  };
+
+  return {
+    checkedAt: Date.now(),
+    updates,
+    blocked,
+    counts
+  };
+}
+
 export async function setModEnabled(instanceId: string, modId: string, enabled: boolean) {
   const state = loadModsState(instanceId);
   const mod = CATALOG.find((m) => m.id === modId);
@@ -182,17 +329,28 @@ export function listMods(instanceId: string) {
   });
 }
 
-export async function refreshModsForInstance(opts: { instanceId: string; mcVersion: string; loader: "fabric"; }) {
+export async function refreshModsForInstance(opts: {
+  instanceId: string;
+  mcVersion: string;
+  loader: "fabric";
+  targetCatalogIds?: string[];
+}) {
   const instanceId = opts.instanceId;
   const state = loadModsState(instanceId);
   const modsDir = ensureModsDir(instanceId);
   const cacheDir = getModCacheDir();
   fs.mkdirSync(cacheDir, { recursive: true });
+  const targetSet = opts.targetCatalogIds?.length ? new Set(opts.targetCatalogIds.map(String)) : null;
 
   const resolved: Record<string, ResolvedMod> = {};
   const dependencyQueue: string[] = [];
 
   for (const mod of CATALOG) {
+    if (targetSet && !targetSet.has(mod.id)) {
+      if (state.resolved?.[mod.id]) resolved[mod.id] = state.resolved[mod.id];
+      continue;
+    }
+
     const shouldEnable = mod.required ? true : !!state.enabled[mod.id];
     if (!shouldEnable) {
       resolved[mod.id] = {
@@ -259,6 +417,7 @@ export async function refreshModsForInstance(opts: { instanceId: string; mcVersi
         downloadUrl: r.url,
         sha1: r.sha1,
         sha512: r.sha512,
+        requiredProjectIds: r.requiredProjectIds ?? [],
         lastCheckedAt: Date.now()
       };
 
@@ -280,7 +439,7 @@ export async function refreshModsForInstance(opts: { instanceId: string; mcVersi
   }
 
   // Auto-install required dependencies declared by resolved mods on Modrinth.
-  cleanAutoDependencyFiles(modsDir);
+  if (!targetSet) cleanAutoDependencyFiles(modsDir);
   const installedIds = collectInstalledModIds(modsDir);
   const visitedProjects = new Set<string>();
 

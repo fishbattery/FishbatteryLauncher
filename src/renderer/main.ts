@@ -1780,6 +1780,31 @@ function validationIssueSuggestions(issue: any) {
   return [];
 }
 
+function buildModUpdateSummary(plan: any) {
+  const lines: string[] = [];
+  lines.push(`Smart update analysis (${new Date(plan?.checkedAt || Date.now()).toLocaleString()})`);
+  lines.push(
+    `Updates: ${plan?.updates?.length || 0}  [Safe: ${plan?.counts?.safe || 0}, Caution: ${plan?.counts?.caution || 0}, Breaking: ${plan?.counts?.breaking || 0}]`
+  );
+  if (plan?.blocked?.length) lines.push(`Blocked: ${plan.blocked.length}`);
+  lines.push("");
+  for (const u of (plan?.updates || []).slice(0, 12)) {
+    const sev = String(u?.severity || "safe").toUpperCase();
+    lines.push(`[${sev}] ${u?.id}: ${u?.fromVersion || "none"} -> ${u?.toVersion || "unknown"}`);
+    if (u?.reason) lines.push(`  reason: ${u.reason}`);
+    if (u?.dependencyAdded?.length) lines.push(`  deps+: ${u.dependencyAdded.join(", ")}`);
+    if (u?.dependencyRemoved?.length) lines.push(`  deps-: ${u.dependencyRemoved.join(", ")}`);
+    if (u?.changelog) lines.push(`  changelog: ${String(u.changelog).slice(0, 180)}`);
+  }
+  if ((plan?.updates?.length || 0) > 12) lines.push(`...and ${plan.updates.length - 12} more`);
+  if (plan?.blocked?.length) {
+    lines.push("");
+    lines.push("Blocked mods:");
+    for (const b of plan.blocked.slice(0, 8)) lines.push(`- ${b.id}: ${b.reason}`);
+  }
+  return lines.join("\n");
+}
+
 async function renderCompatibilityGuidance(instanceId: string | null) {
   modalCompatGuidance.innerHTML = "";
   if (!instanceId) return;
@@ -3425,13 +3450,71 @@ modalUpdateMods.onclick = () =>
     if (!editInstanceId) return;
     const inst = (state.instances?.instances ?? []).find((x: any) => x.id === editInstanceId) ?? null;
     if (!inst) return;
-    setStatus("Resolving mods…");
+    setStatus("Analyzing mod updates...");
+    const plan = await window.api.modsPlanRefresh(inst.id, inst.mcVersion);
+    if (!plan?.updates?.length) {
+      setStatus("");
+      appendLog("[mods] Smart update: no compatible updates found.");
+      if (plan?.blocked?.length) {
+        alert(`No applicable updates.\nBlocked mods: ${plan.blocked.map((x: any) => x.id).join(", ")}`);
+      } else {
+        alert("No mod updates available.");
+      }
+      return;
+    }
+
+    const summary = buildModUpdateSummary(plan);
+    const choiceRaw = prompt(
+      `${summary}\n\nChoose action:\n- all\n- individual\n- skip`,
+      "all"
+    );
+    const choice = String(choiceRaw || "skip").trim().toLowerCase();
+    if (choice === "skip") {
+      setStatus("");
+      appendLog("[mods] Smart update skipped by user.");
+      return;
+    }
+
+    let selectedIds: string[] = [];
+    if (choice === "individual") {
+      const suggested = plan.updates.map((u: any) => u.id).slice(0, 5).join(",");
+      const rawIds = prompt("Enter mod IDs to update (comma-separated).", suggested);
+      selectedIds = String(rawIds || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      const valid = new Set(plan.updates.map((u: any) => String(u.id)));
+      selectedIds = selectedIds.filter((x) => valid.has(x));
+      if (!selectedIds.length) {
+        setStatus("");
+        alert("No valid mod IDs selected.");
+        return;
+      }
+    }
+
+    setStatus("Applying mod updates...");
     try {
       await window.api.rollbackCreateSnapshot(inst.id, "mods-refresh", "Before manual mods refresh");
     } catch (err: any) {
       appendLog(`[rollback] Snapshot skipped: ${String(err?.message ?? err)}`);
     }
-    await window.api.modsRefresh(inst.id, inst.mcVersion);
+    try {
+      if (choice === "individual") {
+        await window.api.modsRefreshSelected(inst.id, inst.mcVersion, selectedIds);
+        appendLog(`[mods] Updated selected mods: ${selectedIds.join(", ")}`);
+      } else {
+        await window.api.modsRefresh(inst.id, inst.mcVersion);
+        appendLog("[mods] Updated all eligible mods.");
+      }
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const doRollback = confirm(`Mod update failed:\n${msg}\n\nRestore latest snapshot now?`);
+      if (doRollback) {
+        await window.api.rollbackRestoreLatest(inst.id);
+        appendLog("[rollback] Restored latest snapshot after update failure.");
+      }
+      throw err;
+    }
     await renderInstanceMods(inst.id);
     await renderLocalContent(inst.id);
     const v = await window.api.modsValidate(inst.id);

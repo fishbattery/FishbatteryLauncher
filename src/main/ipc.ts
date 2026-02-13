@@ -17,7 +17,7 @@ import {
   duplicateInstance,
   getInstanceDir
 } from "./instances";
-import { listMods, refreshModsForInstance, setModEnabled } from "./mods";
+import { listMods, planModRefreshForInstance, refreshModsForInstance, setModEnabled } from "./mods";
 import { listPacks, refreshPacksForInstance, setPackEnabled } from "./packs";
 import { pickFabricLoader } from "./fabric";
 import { installFabricVersion } from "./fabricInstall";
@@ -454,6 +454,41 @@ export function registerIpc() {
       instanceId,
       mcVersion: version,
       loader: "fabric"
+    });
+  });
+
+  ipcMain.handle("mods:planRefresh", async (_e, instanceId: string, mcVersion?: string) => {
+    if (!instanceId) throw new Error("mods:planRefresh: instanceId missing");
+    const db = listInstances();
+    const inst = db.instances.find((x) => x.id === instanceId);
+    const version = String(mcVersion || inst?.mcVersion || "").trim();
+    const loader = String(inst?.loader || "fabric").trim().toLowerCase();
+    if (!version) throw new Error("mods:planRefresh: mcVersion missing");
+    if (loader !== "fabric") throw new Error(`mods:planRefresh: unsupported loader ${loader}`);
+    return planModRefreshForInstance({
+      instanceId,
+      mcVersion: version,
+      loader: "fabric"
+    });
+  });
+
+  ipcMain.handle("mods:refreshSelected", async (_e, instanceId: string, mcVersion?: string, selectedIds?: string[]) => {
+    if (!instanceId) throw new Error("mods:refreshSelected: instanceId missing");
+    const db = listInstances();
+    const inst = db.instances.find((x) => x.id === instanceId);
+    const version = String(mcVersion || inst?.mcVersion || "").trim();
+    const loader = String(inst?.loader || "fabric").trim().toLowerCase();
+    if (!version) throw new Error("mods:refreshSelected: mcVersion missing");
+    if (loader !== "fabric") throw new Error(`mods:refreshSelected: unsupported loader ${loader}`);
+    const targets = Array.isArray(selectedIds)
+      ? selectedIds.map((x) => String(x || "").trim()).filter(Boolean)
+      : [];
+    if (!targets.length) throw new Error("mods:refreshSelected: selectedIds missing");
+    return refreshModsForInstance({
+      instanceId,
+      mcVersion: version,
+      loader: "fabric",
+      targetCatalogIds: targets
     });
   });
 

@@ -33,7 +33,10 @@ export type ResolveLatestModrinthOpts = {
 };
 
 export type ResolvedModrinthFile = {
+  versionId: string;
   versionName: string;
+  changelog?: string;
+  publishedAt?: string;
   fileName: string;
   url: string;
   sha1?: string;
@@ -73,7 +76,10 @@ export async function resolveLatestModrinth(
   if (!primary) return null;
 
   return {
+    versionId: chosen.id,
     versionName: chosen.version_number,
+    changelog: typeof (chosen as any).changelog === "string" ? String((chosen as any).changelog) : "",
+    publishedAt: chosen.date_published,
     fileName: primary.filename,
     url: primary.url,
     sha1: primary.hashes.sha1,
