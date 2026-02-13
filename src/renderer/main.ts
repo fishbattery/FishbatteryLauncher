@@ -337,7 +337,6 @@ type ThemeId =
   | "oled"
   | "system-default"
   | "windows-xp"
-  | "minecraft-grass-block"
   | "end-dimension"
   | "nether-core"
   | "ice-frost"
@@ -363,7 +362,6 @@ const THEME_OPTIONS: Array<{ value: ThemeId; label: string }> = [
   { value: "oled", label: "OLED" },
   { value: "system-default", label: "System Default" },
   { value: "windows-xp", label: "Windows XP" },
-  { value: "minecraft-grass-block", label: "Minecraft Grass Block" },
   { value: "end-dimension", label: "End Dimension" },
   { value: "nether-core", label: "Nether Core" },
   { value: "ice-frost", label: "Ice / Frost" },
@@ -383,6 +381,32 @@ const THEME_OPTIONS: Array<{ value: ThemeId; label: string }> = [
   { value: "developer-mode", label: "Developer Mode" },
   { value: "minimal-bw", label: "Minimal B&W" }
 ];
+
+const THEME_BEHAVIOR_TEXT: Record<ThemeId, string> = {
+  ocean: "Calm blue/teal look with soft depth and smooth contrast.",
+  dark: "Neutral charcoal UI optimized for readability during long sessions.",
+  oled: "True-black high-contrast UI tuned for OLED displays.",
+  "system-default": "Follows your OS dark/light appearance and adapts accent behavior.",
+  "windows-xp": "Retro glossy XP-style chrome with classic blue desktop feel.",
+  "end-dimension": "Deep violet atmosphere with soft glow accents.",
+  "nether-core": "Dark red/orange high-energy style inspired by the Nether.",
+  "ice-frost": "Cool frosted blues with crisp contrast and calm visuals.",
+  "prism-style": "Minimal flat surfaces with a clean productivity-first layout.",
+  "creeper-mode": "Matte dark base with bright creeper-green accents.",
+  "retro-2000s": "Early-2000s glossy UI vibe with modern spacing.",
+  "rgb-gamer": "Dark base with subtle animated neon color energy.",
+  "glass-modern-w11": "Modern acrylic-style translucent panels and layered depth.",
+  "console-mode": "Larger controls and spacing for dashboard-like usability.",
+  "dynamic-accent": "User-driven accent, radius and border customization.",
+  "time-of-day": "Auto-switches style through morning/day/evening/night.",
+  "biome-plains": "Soft green natural palette inspired by plains biomes.",
+  "biome-desert": "Warm sandy palette with subdued earth tones.",
+  "biome-jungle": "Dense green contrast with humid jungle mood.",
+  "biome-snow": "Cold pale palette inspired by snowy biomes.",
+  "biome-cherry-grove": "Gentle pink/cherry tones with soft contrast.",
+  "developer-mode": "Terminal-inspired mono style with utilitarian emphasis.",
+  "minimal-bw": "Monochrome grayscale style focused on structure and clarity."
+};
 
 type AppSettings = {
   theme: ThemeId;
@@ -427,6 +451,8 @@ const defaultSettings: AppSettings = {
   preLaunch: "",
   postExit: ""
 };
+
+const THEME_ID_SET = new Set<ThemeId>(THEME_OPTIONS.map((o) => o.value));
 
 const INSTANCE_PRESETS: Record<Exclude<InstancePresetId, "none">, InstancePreset> = {
   "max-fps": {
@@ -573,6 +599,7 @@ const MOD_ALTERNATIVES: Record<string, string[]> = {
 function getSettings(): AppSettings {
   try {
     const raw = { ...defaultSettings, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {}) };
+    const theme = THEME_ID_SET.has(raw.theme as ThemeId) ? (raw.theme as ThemeId) : defaultSettings.theme;
     const accentColor =
       typeof raw.accentColor === "string" && /^#[0-9a-fA-F]{6}$/.test(raw.accentColor)
         ? raw.accentColor
@@ -596,6 +623,7 @@ function getSettings(): AppSettings {
     const pixelFont = !!raw.pixelFont;
     return {
       ...raw,
+      theme,
       accentColor,
       surfaceAlpha,
       customBackgroundDataUrl,
@@ -656,25 +684,21 @@ function applySettingsToDom(s: AppSettings) {
 
   document.documentElement.dataset.theme = effectiveTheme;
   document.documentElement.dataset.themeSource = s.theme;
-  document.documentElement.dataset.font = effectiveTheme === "minecraft-grass-block" && s.pixelFont ? "pixel" : "default";
+  document.documentElement.dataset.font = s.pixelFont ? "pixel" : "default";
   document.documentElement.dataset.glass = s.blur ? "1" : "0";
   document.documentElement.style.setProperty("--r12", `${Math.max(8, Math.min(22, s.cornerRadius || 12))}px`);
   document.documentElement.style.setProperty("--r16", `${Math.max(12, Math.min(28, (s.cornerRadius || 12) + 4))}px`);
   document.documentElement.style.setProperty("--stroke-w", `${Math.max(1, Math.min(3, s.borderThickness || 1))}px`);
   const alpha = Math.max(70, Math.min(98, Number(s.surfaceAlpha || 88)));
   document.documentElement.style.setProperty("--surface-alpha", String(alpha / 100));
-
-  if (s.theme === "dynamic-accent") {
-    document.documentElement.style.setProperty("--accent", s.accentColor || "#3ddc84");
-    document.documentElement.style.setProperty("--accent-rgb", hexToRgbTriplet(s.accentColor || "#3ddc84"));
-  } else if (s.theme === "system-default") {
-    const accent = getSystemAccentColor();
-    document.documentElement.style.setProperty("--accent", accent);
-    document.documentElement.style.setProperty("--accent-rgb", hexToRgbTriplet(accent));
-  } else {
-    document.documentElement.style.removeProperty("--accent");
-    document.documentElement.style.removeProperty("--accent-rgb");
-  }
+  const accent =
+    s.theme === "system-default" && (!s.accentColor || s.accentColor === defaultSettings.accentColor)
+      ? getSystemAccentColor()
+      : s.theme === "glass-modern-w11" && (!s.accentColor || s.accentColor === defaultSettings.accentColor)
+        ? "#C5E4F2"
+        : s.accentColor || "#3ddc84";
+  document.documentElement.style.setProperty("--accent", accent);
+  document.documentElement.style.setProperty("--accent-rgb", hexToRgbTriplet(accent));
 
   if (s.customBackgroundDataUrl) {
     document.body.style.backgroundImage = `linear-gradient(rgba(7, 12, 18, .68), rgba(7, 12, 18, .68)), url("${s.customBackgroundDataUrl}")`;
@@ -996,8 +1020,24 @@ function makeSwitch(checked: boolean, onChange: (v: boolean) => void) {
 
   const slider = document.createElement("span");
   slider.className = "slider";
+  slider.tabIndex = 0;
+  slider.setAttribute("role", "switch");
+  slider.setAttribute("aria-checked", checked ? "true" : "false");
 
-  input.onchange = () => onChange(input.checked);
+  input.onchange = () => {
+    slider.setAttribute("aria-checked", input.checked ? "true" : "false");
+    onChange(input.checked);
+  };
+  slider.onclick = (e) => {
+    e.preventDefault();
+    input.click();
+  };
+  slider.onkeydown = (e) => {
+    if (e.key === " " || e.key === "Enter") {
+      e.preventDefault();
+      input.click();
+    }
+  };
 
   wrap.appendChild(input);
   wrap.appendChild(slider);
@@ -1305,22 +1345,22 @@ function renderSettingsPanels() {
     const sel = makeSelect(
       THEME_OPTIONS,
       s.theme,
-      (v) => setSettings({ theme: v as AppSettings["theme"] })
+      (v) => {
+        setSettings({ theme: v as AppSettings["theme"] });
+        renderSettingsPanels();
+      }
     );
     row.appendChild(sel);
     settingsPanelTheme.appendChild(row);
   }
 
   {
-    const { row } = makeRow(
-      "Theme behavior",
-      'System Default follows OS dark/light preference. Time-of-Day switches automatically through the day.'
-    );
+    const { row } = makeRow("Theme behavior", THEME_BEHAVIOR_TEXT[s.theme]);
     settingsPanelTheme.appendChild(row);
   }
 
   {
-    const { row } = makeRow("Accent color", "Used by Dynamic Accent theme (and as fallback in System Default).");
+    const { row } = makeRow("Accent color", "Applies to interactive accents and highlights.");
     const inp = document.createElement("input");
     inp.type = "color";
     inp.className = "setControl";
@@ -1332,8 +1372,7 @@ function renderSettingsPanels() {
   }
 
   {
-    const dynamicActive = s.theme === "dynamic-accent";
-    const { row } = makeRow("Corner radius", "Dynamic Accent only: adjusts overall roundness.");
+    const { row } = makeRow("Corner radius", "Adjusts overall roundness.");
     const wrap = document.createElement("div");
     wrap.className = "row";
     wrap.style.justifyContent = "flex-end";
@@ -1346,7 +1385,6 @@ function renderSettingsPanels() {
     range.step = "1";
     range.value = String(s.cornerRadius ?? 12);
     range.style.width = "220px";
-    range.disabled = !dynamicActive;
 
     const value = document.createElement("span");
     value.className = "muted";
@@ -1367,8 +1405,7 @@ function renderSettingsPanels() {
   }
 
   {
-    const dynamicActive = s.theme === "dynamic-accent";
-    const { row } = makeRow("Border thickness", "Dynamic Accent only: controls border weight.");
+    const { row } = makeRow("Border thickness", "Controls border weight.");
     const wrap = document.createElement("div");
     wrap.className = "row";
     wrap.style.justifyContent = "flex-end";
@@ -1381,7 +1418,6 @@ function renderSettingsPanels() {
     range.step = "1";
     range.value = String(s.borderThickness ?? 1);
     range.style.width = "220px";
-    range.disabled = !dynamicActive;
 
     const value = document.createElement("span");
     value.className = "muted";
@@ -1402,10 +1438,8 @@ function renderSettingsPanels() {
   }
 
   {
-    const grassActive = s.theme === "minecraft-grass-block";
-    const { row } = makeRow("Pixel font", "Minecraft Grass Block theme: optional pixel-style UI font.");
+    const { row } = makeRow("Pixel font", "Optional retro pixel-style UI font.");
     const sw = makeSwitch(s.pixelFont, (v) => setSettings({ pixelFont: v }));
-    (sw.querySelector("input") as HTMLInputElement).disabled = !grassActive;
     row.appendChild(sw);
     settingsPanelTheme.appendChild(row);
   }
