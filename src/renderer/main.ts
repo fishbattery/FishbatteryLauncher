@@ -1726,6 +1726,8 @@ function renderSettingsPanels() {
       "Conflict policy",
       "Ask lets you choose local/cloud. Newer wins compares latest edit timestamps."
     );
+    policyRow.style.flexDirection = "column";
+    policyRow.style.alignItems = "stretch";
     const policySelect = makeSelect(
       [
         { value: "ask", label: "Ask every time" },
@@ -1742,6 +1744,19 @@ function renderSettingsPanels() {
       }
     );
     policyRow.appendChild(policySelect);
+    const policyHint = document.createElement("div");
+    policyHint.className = "setHelp";
+    policyHint.style.marginTop = "6px";
+    policyHint.textContent =
+      "When a conflict popup appears, you can change this default here: Settings > Install > Conflict policy.";
+    policyRow.appendChild(policyHint);
+    if (!state.launcherAccount?.activeAccountId) {
+      const signInHint = document.createElement("div");
+      signInHint.className = "setHelp";
+      signInHint.style.marginTop = "6px";
+      signInHint.textContent = "Sign in to your Fishbattery account from the top-right account menu to enable cloud sync.";
+      policyRow.appendChild(signInHint);
+    }
     settingsPanelInstall.appendChild(policyRow);
 
     const v = document.createElement("div");
@@ -3443,8 +3458,11 @@ async function renderInstances() {
     actions.className = "cardActions";
 
     const btnEdit = document.createElement("button");
-    btnEdit.className = "btn";
-    btnEdit.textContent = "Edit";
+    btnEdit.className = "iconBtn instanceEditBtn";
+    btnEdit.type = "button";
+    btnEdit.title = "Edit instance";
+    btnEdit.setAttribute("aria-label", `Edit ${i.name ?? "instance"}`);
+    btnEdit.textContent = "⚙";
     btnEdit.onclick = async () => {
       modalMode = "edit";
       editInstanceId = i.id;
@@ -3538,12 +3556,12 @@ async function renderInstances() {
       await launchForInstance(i, String(preferred.address || "").trim());
     };
 
-    actions.appendChild(btnEdit);
     actions.appendChild(btnJoin);
     actions.appendChild(btnExport);
     actions.appendChild(btnDelete);
     actions.appendChild(btnUse);
 
+    card.appendChild(btnEdit);
     inner.appendChild(thumb);
     inner.appendChild(meta);
     inner.appendChild(actions);

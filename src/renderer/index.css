@@ -345,6 +345,7 @@ body{
   border-radius: var(--r16);
   background: var(--panel);
   overflow: hidden;
+  position: relative;
 }
 .cardInner{
   padding: 12px;
@@ -389,6 +390,15 @@ body{
   justify-content:flex-end;
   flex-wrap: wrap;
   margin-left: auto;
+}
+.instanceEditBtn{
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 700;
 }
 
 /* Logs */
