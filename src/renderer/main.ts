@@ -2687,17 +2687,51 @@ async function openLauncherProfileDialog(current: {
     };
 
     const displayNameField = makeInput("Display name", "text", "Fishbattery");
-    const avatarField = makeInput("Profile picture URL", "url", "https://...");
+    const avatarField = makeInput("Profile picture", "text", "");
     displayNameField.input.value = String(current.displayName || "").trim();
-    avatarField.input.value = String(current.avatarUrl || "").trim();
+    avatarField.input.readOnly = true;
+    avatarField.input.placeholder = "No file selected";
+    avatarField.input.value = "";
+
+    let avatarValue: string | null = String(current.avatarUrl || "").trim() || null;
+    const filePicker = document.createElement("input");
+    filePicker.type = "file";
+    filePicker.accept = "image/png,image/jpeg,image/webp,image/gif,image/bmp";
+    filePicker.style.display = "none";
+
+    const previewWrap = document.createElement("div");
+    previewWrap.style.width = "76px";
+    previewWrap.style.height = "76px";
+    previewWrap.style.borderRadius = "12px";
+    previewWrap.style.border = "1px solid var(--line)";
+    previewWrap.style.overflow = "hidden";
+    previewWrap.style.background = "var(--panel2)";
+    previewWrap.style.display = "grid";
+    previewWrap.style.placeItems = "center";
+    previewWrap.style.marginBottom = "8px";
+
+    const previewImg = document.createElement("img");
+    previewImg.style.width = "100%";
+    previewImg.style.height = "100%";
+    previewImg.style.objectFit = "cover";
+    previewImg.style.display = avatarValue ? "" : "none";
+    if (avatarValue) previewImg.src = avatarValue;
+
+    const previewFallback = document.createElement("span");
+    previewFallback.className = "muted";
+    previewFallback.style.fontSize = "11px";
+    previewFallback.textContent = "No picture";
+    previewFallback.style.display = avatarValue ? "none" : "";
+
+    previewWrap.append(previewImg, previewFallback);
 
     const hint = document.createElement("div");
     hint.className = "muted";
     hint.style.fontSize = "12px";
     hint.style.marginBottom = "8px";
-    hint.textContent = "Avatar URL supports http(s) links and data:image/* base64 URLs.";
+    hint.textContent = "Upload an image (PNG, JPG, WEBP, GIF, BMP).";
 
-    panel.append(title, displayNameField.wrap, avatarField.wrap, hint);
+    panel.append(title, displayNameField.wrap, avatarField.wrap, previewWrap, hint, filePicker);
 
     const actions = document.createElement("div");
     actions.style.display = "flex";
@@ -2709,6 +2743,10 @@ async function openLauncherProfileDialog(current: {
     clearAvatarBtn.className = "btn";
     clearAvatarBtn.textContent = "Clear picture";
 
+    const pickAvatarBtn = document.createElement("button");
+    pickAvatarBtn.className = "btn";
+    pickAvatarBtn.textContent = "Upload picture";
+
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "btn";
     cancelBtn.textContent = "Cancel";
@@ -2717,7 +2755,7 @@ async function openLauncherProfileDialog(current: {
     saveBtn.className = "btn ok";
     saveBtn.textContent = "Save";
 
-    actions.append(clearAvatarBtn, cancelBtn, saveBtn);
+    actions.append(pickAvatarBtn, clearAvatarBtn, cancelBtn, saveBtn);
     panel.appendChild(actions);
     backdrop.appendChild(panel);
     document.body.appendChild(backdrop);
@@ -2739,20 +2777,57 @@ async function openLauncherProfileDialog(current: {
       if (ev.target === backdrop) finish(null);
     });
 
+    const renderAvatarState = () => {
+      if (avatarValue) {
+        previewImg.src = avatarValue;
+        previewImg.style.display = "";
+        previewFallback.style.display = "none";
+        avatarField.input.value = "Image selected";
+      } else {
+        previewImg.src = "";
+        previewImg.style.display = "none";
+        previewFallback.style.display = "";
+        avatarField.input.value = "";
+      }
+    };
+
+    pickAvatarBtn.onclick = () => filePicker.click();
+    filePicker.onchange = () => {
+      const file = filePicker.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        alert("Please select an image file.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onerror = () => alert("Could not read image file.");
+      reader.onload = () => {
+        const result = typeof reader.result === "string" ? reader.result : "";
+        if (!result.startsWith("data:image/")) {
+          alert("Unsupported image format.");
+          return;
+        }
+        avatarValue = result;
+        renderAvatarState();
+      };
+      reader.readAsDataURL(file);
+    };
     clearAvatarBtn.onclick = () => {
-      avatarField.input.value = "";
+      avatarValue = null;
+      filePicker.value = "";
+      renderAvatarState();
     };
     cancelBtn.onclick = () => finish(null);
     saveBtn.onclick = () => {
       const displayName = displayNameField.input.value.trim();
-      const avatarUrlRaw = avatarField.input.value.trim();
       if (!displayName) {
         alert("Display name is required.");
         return;
       }
-      finish({ displayName, avatarUrl: avatarUrlRaw || null });
+      finish({ displayName, avatarUrl: avatarValue });
     };
 
+    renderAvatarState();
     displayNameField.input.focus();
   });
 }
