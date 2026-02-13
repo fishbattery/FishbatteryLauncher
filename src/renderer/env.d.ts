@@ -88,6 +88,30 @@ declare global {
         updatedAt: number | null;
         error: string | null;
       }>;
+      cloudSyncGetState: () => Promise<{
+        lastSyncedAt: number | null;
+        lastStatus: "idle" | "up-to-date" | "pushed" | "pulled" | "conflict" | "error";
+        lastError: string | null;
+        lastRemoteRevision: number | null;
+        lastSnapshotHash: string | null;
+      }>;
+      cloudSyncSyncNow: (payload: {
+        settings: Record<string, unknown>;
+        policy?: "ask" | "newer-wins" | "prefer-local" | "prefer-cloud";
+      }) => Promise<{
+        ok: boolean;
+        status: "up-to-date" | "pushed" | "pulled" | "conflict" | "error" | "skipped";
+        message: string;
+        lastSyncedAt: number | null;
+        lastRemoteRevision: number | null;
+        settingsPatch?: Record<string, unknown> | null;
+        conflict?: {
+          localSettingsUpdatedAt: number;
+          localInstancesUpdatedAt: number;
+          remoteSettingsUpdatedAt: number;
+          remoteInstancesUpdatedAt: number;
+        };
+      }>;
 
       instancesList: () => Promise<any>;
       instancesCreate: (cfg: any) => Promise<any>;

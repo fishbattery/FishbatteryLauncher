@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld("api", {
   launcherAccountLogout: () => ipcRenderer.invoke("launcherAccount:logout"),
   launcherAccountUpdateProfile: (patch: { displayName?: string; avatarUrl?: string | null }) =>
     ipcRenderer.invoke("launcherAccount:updateProfile", patch),
+  cloudSyncGetState: () => ipcRenderer.invoke("cloudSync:getState"),
+  cloudSyncSyncNow: (payload: {
+    settings: Record<string, unknown>;
+    policy?: "ask" | "newer-wins" | "prefer-local" | "prefer-cloud";
+  }) => ipcRenderer.invoke("cloudSync:syncNow", payload),
 
   instancesList: () => ipcRenderer.invoke("instances:list"),
   instancesCreate: (cfg: any) => ipcRenderer.invoke("instances:create", cfg),

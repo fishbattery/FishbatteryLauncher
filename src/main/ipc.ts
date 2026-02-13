@@ -18,6 +18,7 @@ import {
   updateLauncherAccountProfile,
   switchLauncherAccount
 } from "./launcherAccount";
+import { getCloudSyncState, syncCloudNow } from "./cloudSync";
 import {
   createInstance,
   listInstances,
@@ -420,6 +421,17 @@ export function registerIpc() {
   ipcMain.handle(
     "launcherAccount:updateProfile",
     async (_e, patch: { displayName?: string; avatarUrl?: string | null }) => updateLauncherAccountProfile(patch)
+  );
+  ipcMain.handle("cloudSync:getState", async () => getCloudSyncState());
+  ipcMain.handle(
+    "cloudSync:syncNow",
+    async (
+      _e,
+      payload: {
+        settings: Record<string, unknown>;
+        policy?: "ask" | "newer-wins" | "prefer-local" | "prefer-cloud";
+      }
+    ) => syncCloudNow(payload)
   );
 
   // ---------- Versions ----------

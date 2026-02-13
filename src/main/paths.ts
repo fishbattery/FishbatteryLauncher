@@ -60,3 +60,7 @@ export function getLauncherAccountsPath(): string {
 export function getLauncherSessionPath(): string {
   return path.join(getDataRoot(), "launcher-session.bin");
 }
+
+export function getCloudSyncStatePath(): string {
+  return path.join(getDataRoot(), "cloud-sync-state.json");
+}

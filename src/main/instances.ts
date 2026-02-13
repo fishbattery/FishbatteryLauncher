@@ -9,6 +9,7 @@ export type InstanceConfig = {
   id: string;
   name: string;
   accountId?: string | null; // which account to launch with (default: active account)
+  syncEnabled?: boolean;
   mcVersion: string;        // e.g. "1.21.4" or "25w06a"
   loader: "vanilla" | "fabric" | "quilt" | "forge" | "neoforge";
   instancePreset?: string | null;
@@ -25,12 +26,20 @@ export type InstanceConfig = {
 type InstancesDb = {
   activeInstanceId: string | null;
   instances: InstanceConfig[];
+  updatedAt?: number;
 };
 
 const DB_PATH = () => path.join(getInstancesRoot(), "_instances.json");
 
 function loadDb(): InstancesDb {
-  return readJsonFile(DB_PATH(), { activeInstanceId: null, instances: [] });
+  const db = readJsonFile(DB_PATH(), { activeInstanceId: null, instances: [], updatedAt: Date.now() });
+  if (!Number.isFinite(Number(db.updatedAt))) db.updatedAt = Date.now();
+  if (!Array.isArray(db.instances)) db.instances = [];
+  db.instances = db.instances.map((inst) => ({
+    ...inst,
+    syncEnabled: inst?.syncEnabled !== false
+  }));
+  return db;
 }
 
 function saveDb(db: InstancesDb) {
@@ -39,6 +48,22 @@ function saveDb(db: InstancesDb) {
 
 export function listInstances() {
   return loadDb();
+}
+
+export function replaceInstancesFromSync(payload: {
+  activeInstanceId: string | null;
+  instances: InstanceConfig[];
+  updatedAt?: number;
+}) {
+  const next: InstancesDb = {
+    activeInstanceId: payload?.activeInstanceId ?? null,
+    instances: Array.isArray(payload?.instances)
+      ? payload.instances.map((inst) => ({ ...inst, syncEnabled: inst?.syncEnabled !== false }))
+      : [],
+    updatedAt: Number.isFinite(Number(payload?.updatedAt)) ? Number(payload?.updatedAt) : Date.now()
+  };
+  saveDb(next);
+  return next;
 }
 
 export function getInstanceDir(instanceId: string): string {
@@ -52,9 +77,14 @@ export function getModsStatePath(instanceId: string) {
 
 export function createInstance(cfg: Omit<InstanceConfig, "createdAt">) {
   const db = loadDb();
-  const full: InstanceConfig = { ...cfg, createdAt: Date.now() };
+  const full: InstanceConfig = {
+    ...cfg,
+    createdAt: Date.now(),
+    syncEnabled: cfg?.syncEnabled !== false
+  };
   db.instances.unshift(full);
   db.activeInstanceId = full.id;
+  db.updatedAt = Date.now();
   saveDb(db);
   getInstanceDir(full.id);
   return full;
@@ -63,6 +93,7 @@ export function createInstance(cfg: Omit<InstanceConfig, "createdAt">) {
 export function setActiveInstance(id: string | null) {
   const db = loadDb();
   db.activeInstanceId = id;
+  db.updatedAt = Date.now();
   saveDb(db);
 }
 
@@ -71,7 +102,15 @@ export function updateInstance(id: string, patch: Partial<InstanceConfig>) {
   const db = loadDb();
   const idx = db.instances.findIndex((i) => i.id === id);
   if (idx === -1) throw new Error("Instance not found");
-  db.instances[idx] = { ...db.instances[idx], ...patch };
+  db.instances[idx] = {
+    ...db.instances[idx],
+    ...patch,
+    syncEnabled:
+      Object.prototype.hasOwnProperty.call(patch || {}, "syncEnabled")
+        ? patch.syncEnabled !== false
+        : db.instances[idx].syncEnabled !== false
+  };
+  db.updatedAt = Date.now();
   saveDb(db);
   return db.instances[idx];
 }
@@ -85,6 +124,7 @@ export function removeInstance(id: string) {
   const db = loadDb();
   db.instances = db.instances.filter((i) => i.id !== id);
   if (db.activeInstanceId === id) db.activeInstanceId = db.instances[0]?.id ?? null;
+  db.updatedAt = Date.now();
   saveDb(db);
 
   // Remove the instance directory from disk as part of delete.
@@ -124,6 +164,7 @@ export function duplicateInstance(id: string) {
 
   db.instances.unshift(copy);
   db.activeInstanceId = newId;
+  db.updatedAt = Date.now();
   saveDb(db);
 
   return copy;

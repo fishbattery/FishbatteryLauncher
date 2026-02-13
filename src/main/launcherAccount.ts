@@ -65,6 +65,10 @@ function getApiBase(): string | null {
   return raw.replace(/\/+$/, "");
 }
 
+export function getLauncherAccountApiBase(): string | null {
+  return getApiBase();
+}
+
 function getApiPath(envKey: string, fallback: string): string {
   const raw = String(process.env[envKey] || "").trim();
   if (!raw) return fallback;
@@ -156,7 +160,7 @@ function loadSession(): LauncherSession | null {
 async function requestAuth(
   path: string,
   init: {
-    method: "GET" | "POST" | "PATCH";
+    method: "GET" | "POST" | "PUT" | "PATCH";
     body?: Record<string, unknown>;
     accessToken?: string;
   }
@@ -191,6 +195,19 @@ async function requestAuth(
   }
   if (!payload || typeof payload !== "object") return {};
   return payload as AuthResponse;
+}
+
+export async function requestLauncherAccountAuthed(
+  path: string,
+  init: { method: "GET" | "POST" | "PUT" | "PATCH"; body?: Record<string, unknown> }
+): Promise<AuthResponse> {
+  const session = loadSession();
+  if (!session?.accessToken) throw new Error("Not signed in.");
+  return requestAuth(path, {
+    method: init.method,
+    body: init.body,
+    accessToken: session.accessToken
+  });
 }
 
 function stateFromDb(db: LauncherAccountDb, error: string | null = null): LauncherAccountState {

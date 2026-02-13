@@ -96,6 +96,7 @@ const resourcepacksList = $("resourcepacksList");
 const shaderpacksList = $("shaderpacksList");
 
 const instanceAccount = $("instanceAccount") as HTMLSelectElement;
+const instanceSyncEnabled = $("instanceSyncEnabled");
 const instancePreset = $("instancePreset") as HTMLSelectElement;
 const optProfile = $("optProfile") as HTMLSelectElement;
 const btnOptimizeInstance = $("btnOptimizeInstance");
@@ -179,12 +180,26 @@ type UpdaterUiState = {
   updatedAt: number;
 };
 
+type CloudSyncUiState = {
+  lastSyncedAt: number | null;
+  lastStatus: "idle" | "up-to-date" | "pushed" | "pulled" | "conflict" | "error";
+  lastError: string | null;
+  lastRemoteRevision: number | null;
+};
+
 let updaterState: UpdaterUiState = {
   status: "idle",
   currentVersion: "unknown",
   message: "Updates not checked yet.",
   updatedAt: Date.now()
 };
+let cloudSyncState: CloudSyncUiState = {
+  lastSyncedAt: null,
+  lastStatus: "idle",
+  lastError: null,
+  lastRemoteRevision: null
+};
+let cloudSyncIntervalId: number | null = null;
 let preflightState: any = null;
 let hasAutoCheckedUpdates = false;
 let promptedUpdateVersion: string | null = null;
@@ -214,6 +229,7 @@ let iconPreviewNaturalW = 0;
 let iconPreviewNaturalH = 0;
 let iconPreviewDragMaxShiftX = 0;
 let iconPreviewDragMaxShiftY = 0;
+let modalInstanceSyncEnabled = true;
 
 function getSelectedIconTransformPayload() {
   return {
@@ -428,6 +444,10 @@ type AppSettings = {
   jvmArgs: string;
   preLaunch: string;
   postExit: string;
+  settingsUpdatedAt: number;
+  cloudSyncEnabled: boolean;
+  cloudSyncAuto: boolean;
+  cloudSyncConflictPolicy: "ask" | "newer-wins" | "prefer-local" | "prefer-cloud";
 };
 
 const SETTINGS_KEY = "fishbattery.settings";
@@ -450,7 +470,11 @@ const defaultSettings: AppSettings = {
   winH: 480,
   jvmArgs: "",
   preLaunch: "",
-  postExit: ""
+  postExit: "",
+  settingsUpdatedAt: Date.now(),
+  cloudSyncEnabled: true,
+  cloudSyncAuto: true,
+  cloudSyncConflictPolicy: "ask"
 };
 
 const THEME_ID_SET = new Set<ThemeId>(THEME_OPTIONS.map((o) => o.value));
@@ -622,6 +646,18 @@ function getSettings(): AppSettings {
       Math.min(3, Number.isFinite(Number(raw.borderThickness)) ? Number(raw.borderThickness) : defaultSettings.borderThickness)
     );
     const pixelFont = !!raw.pixelFont;
+    const settingsUpdatedAt = Math.max(
+      0,
+      Number.isFinite(Number(raw.settingsUpdatedAt)) ? Number(raw.settingsUpdatedAt) : defaultSettings.settingsUpdatedAt
+    );
+    const cloudSyncEnabled = raw.cloudSyncEnabled !== false;
+    const cloudSyncAuto = raw.cloudSyncAuto !== false;
+    const cloudSyncConflictPolicy =
+      raw.cloudSyncConflictPolicy === "newer-wins" ||
+      raw.cloudSyncConflictPolicy === "prefer-local" ||
+      raw.cloudSyncConflictPolicy === "prefer-cloud"
+        ? raw.cloudSyncConflictPolicy
+        : "ask";
     return {
       ...raw,
       theme,
@@ -630,15 +666,22 @@ function getSettings(): AppSettings {
       customBackgroundDataUrl,
       cornerRadius,
       borderThickness,
-      pixelFont
+      pixelFont,
+      settingsUpdatedAt,
+      cloudSyncEnabled,
+      cloudSyncAuto,
+      cloudSyncConflictPolicy
     };
   } catch {
     return { ...defaultSettings };
   }
 }
 
-function setSettings(patch: Partial<AppSettings>) {
+function setSettings(patch: Partial<AppSettings>, opts?: { touchUpdatedAt?: boolean }) {
   const next = { ...getSettings(), ...patch };
+  if (opts?.touchUpdatedAt !== false && !Object.prototype.hasOwnProperty.call(patch, "settingsUpdatedAt")) {
+    next.settingsUpdatedAt = Date.now();
+  }
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
   } catch (err: any) {
@@ -1123,6 +1166,82 @@ function preflightSummaryText(p: any) {
   return "Preflight detected critical issues.";
 }
 
+function cloudSyncStatusText(state: CloudSyncUiState) {
+  if (!state) return "Cloud sync has not run yet.";
+  if (state.lastStatus === "up-to-date") return "Cloud sync is up to date.";
+  if (state.lastStatus === "pushed") return "Local changes were pushed to cloud.";
+  if (state.lastStatus === "pulled") return "Cloud changes were applied locally.";
+  if (state.lastStatus === "conflict") return "Cloud conflict detected. Resolve manually.";
+  if (state.lastStatus === "error") return state.lastError || "Cloud sync failed.";
+  return "Cloud sync is idle.";
+}
+
+function applyRemoteSyncedSettings(patch: Record<string, unknown> | null | undefined) {
+  if (!patch || typeof patch !== "object") return;
+  setSettings(patch as Partial<AppSettings>, { touchUpdatedAt: false });
+  ensureCloudSyncTimer();
+}
+
+async function runCloudSync(manual: boolean, forcedPolicy?: "prefer-local" | "prefer-cloud") {
+  const s = getSettings();
+  if (!s.cloudSyncEnabled) return;
+  if (!state.launcherAccount?.activeAccountId) return;
+
+  const policy = forcedPolicy || s.cloudSyncConflictPolicy || "ask";
+  const result = await window.api.cloudSyncSyncNow({
+    settings: getSettings() as unknown as Record<string, unknown>,
+    policy
+  });
+
+  cloudSyncState = {
+    lastSyncedAt: result.lastSyncedAt ?? cloudSyncState.lastSyncedAt,
+    lastStatus:
+      result.status === "pushed" || result.status === "pulled" || result.status === "up-to-date"
+        ? result.status
+        : result.status === "conflict"
+          ? "conflict"
+          : "error",
+    lastError: result.status === "error" ? result.message : result.status === "conflict" ? result.message : null,
+    lastRemoteRevision: result.lastRemoteRevision ?? cloudSyncState.lastRemoteRevision
+  };
+
+  if (result.status === "pulled" && result.settingsPatch) {
+    applyRemoteSyncedSettings(result.settingsPatch);
+    state.instances = await window.api.instancesList();
+    await renderInstances();
+  }
+
+  if (result.status === "conflict" && manual && policy === "ask") {
+    const useCloud = confirm(
+      "Cloud sync conflict detected.\n\nOK = use cloud state\nCancel = keep local state"
+    );
+    await runCloudSync(true, useCloud ? "prefer-cloud" : "prefer-local");
+    return;
+  }
+
+  if (manual) {
+    const stamp = cloudSyncState.lastSyncedAt
+      ? new Date(cloudSyncState.lastSyncedAt).toLocaleString()
+      : "never";
+    alert(`Cloud sync: ${result.message}\nLast sync: ${stamp}`);
+  }
+}
+
+function ensureCloudSyncTimer() {
+  if (cloudSyncIntervalId != null) {
+    window.clearInterval(cloudSyncIntervalId);
+    cloudSyncIntervalId = null;
+  }
+  const s = getSettings();
+  if (!s.cloudSyncEnabled || !s.cloudSyncAuto) return;
+  cloudSyncIntervalId = window.setInterval(() => {
+    void guarded(async () => {
+      await runCloudSync(false);
+      renderSettingsPanels();
+    });
+  }, 5 * 60 * 1000);
+}
+
 function allInstancePresetIds(): InstancePresetId[] {
   return ["none", ...Object.keys(INSTANCE_PRESETS)] as InstancePresetId[];
 }
@@ -1558,6 +1677,72 @@ function renderSettingsPanels() {
     channelRow.appendChild(channelSelect);
     settingsPanelInstall.appendChild(channelRow);
 
+    const { row: syncEnableRow } = makeRow(
+      "Cloud sync",
+      "Sync instance metadata, mod lists, packs, JVM options, presets, and theme to your Fishbattery account."
+    );
+    const syncEnableWrap = document.createElement("div");
+    syncEnableWrap.className = "row";
+    syncEnableWrap.style.justifyContent = "flex-end";
+    syncEnableWrap.style.gap = "8px";
+    const syncEnableLabel = document.createElement("span");
+    syncEnableLabel.className = "muted";
+    syncEnableLabel.style.fontSize = "12px";
+    syncEnableLabel.textContent = s.cloudSyncEnabled ? "Enabled" : "Disabled";
+    const syncEnableSwitch = makeSwitch(s.cloudSyncEnabled, (v) => {
+      setSettings({ cloudSyncEnabled: v });
+      ensureCloudSyncTimer();
+      renderSettingsPanels();
+    });
+    syncEnableWrap.appendChild(syncEnableLabel);
+    syncEnableWrap.appendChild(syncEnableSwitch);
+    syncEnableRow.appendChild(syncEnableWrap);
+    settingsPanelInstall.appendChild(syncEnableRow);
+
+    const { row: syncAutoRow } = makeRow(
+      "Background sync",
+      "Automatically sync every 5 minutes while the launcher is open."
+    );
+    const syncAutoWrap = document.createElement("div");
+    syncAutoWrap.className = "row";
+    syncAutoWrap.style.justifyContent = "flex-end";
+    syncAutoWrap.style.gap = "8px";
+    const syncAutoLabel = document.createElement("span");
+    syncAutoLabel.className = "muted";
+    syncAutoLabel.style.fontSize = "12px";
+    syncAutoLabel.textContent = s.cloudSyncAuto ? "On" : "Off";
+    const syncAutoSwitch = makeSwitch(s.cloudSyncAuto, (v) => {
+      setSettings({ cloudSyncAuto: v });
+      ensureCloudSyncTimer();
+      renderSettingsPanels();
+    });
+    syncAutoWrap.appendChild(syncAutoLabel);
+    syncAutoWrap.appendChild(syncAutoSwitch);
+    syncAutoRow.appendChild(syncAutoWrap);
+    settingsPanelInstall.appendChild(syncAutoRow);
+
+    const { row: policyRow } = makeRow(
+      "Conflict policy",
+      "Ask lets you choose local/cloud. Newer wins compares latest edit timestamps."
+    );
+    const policySelect = makeSelect(
+      [
+        { value: "ask", label: "Ask every time" },
+        { value: "newer-wins", label: "Newer wins" },
+        { value: "prefer-local", label: "Always prefer local" },
+        { value: "prefer-cloud", label: "Always prefer cloud" }
+      ],
+      s.cloudSyncConflictPolicy,
+      (v) => {
+        setSettings({
+          cloudSyncConflictPolicy:
+            v === "newer-wins" || v === "prefer-local" || v === "prefer-cloud" ? v : "ask"
+        });
+      }
+    );
+    policyRow.appendChild(policySelect);
+    settingsPanelInstall.appendChild(policyRow);
+
     const v = document.createElement("div");
     v.className = "muted";
     v.style.fontSize = "13px";
@@ -1569,8 +1754,19 @@ function renderSettingsPanels() {
     status.className = "muted";
     status.style.fontSize = "13px";
     status.style.marginBottom = "12px";
-    status.textContent = updaterStatusText(updaterState);
+    status.style.whiteSpace = "pre-line";
+    status.textContent = `${updaterStatusText(updaterState)}\n${cloudSyncStatusText(cloudSyncState)}`;
     settingsPanelInstall.appendChild(status);
+
+    const syncMeta = document.createElement("div");
+    syncMeta.className = "muted";
+    syncMeta.style.fontSize = "12px";
+    syncMeta.style.marginBottom = "10px";
+    const lastSyncText = cloudSyncState.lastSyncedAt
+      ? new Date(cloudSyncState.lastSyncedAt).toLocaleString()
+      : "never";
+    syncMeta.textContent = `Last synced: ${lastSyncText}`;
+    settingsPanelInstall.appendChild(syncMeta);
 
     const actions = document.createElement("div");
     actions.className = "row";
@@ -1608,6 +1804,16 @@ function renderSettingsPanels() {
     actions.appendChild(btnCheck);
     actions.appendChild(btnDownload);
     actions.appendChild(btnInstall);
+    const btnSyncNow = document.createElement("button");
+    btnSyncNow.className = "btn";
+    btnSyncNow.textContent = "Sync now";
+    btnSyncNow.disabled = !s.cloudSyncEnabled || !state.launcherAccount?.activeAccountId;
+    btnSyncNow.onclick = () =>
+      guarded(async () => {
+        await runCloudSync(true);
+        renderSettingsPanels();
+      });
+    actions.appendChild(btnSyncNow);
     settingsPanelInstall.appendChild(actions);
 
     const preflightCard = document.createElement("div");
@@ -3156,6 +3362,7 @@ async function renderAccounts() {
       if (updated) await renderAccounts();
     })();
   }
+  ensureCloudSyncTimer();
 }
 // ---------------- Instances (card layout) ----------------
 function filteredInstances() {
@@ -3268,6 +3475,8 @@ async function renderInstances() {
       createSourceTechnic.toggleAttribute("disabled", true);
       createSourceATLauncher.toggleAttribute("disabled", true);
       createSourceFTB.toggleAttribute("disabled", true);
+      modalInstanceSyncEnabled = i.syncEnabled !== false;
+      renderModalInstanceSyncToggle();
       selectedCreateIconPath = null;
       clearExistingIconOnSave = false;
       instanceIconHint.textContent = "Keep existing icon unless you pick a new one.";
@@ -3406,6 +3615,11 @@ function updateCreateLoaderUi() {
     return;
   }
   createLoaderHint.textContent = "Select a supported loader.";
+}
+
+function renderModalInstanceSyncToggle() {
+  instanceSyncEnabled.classList.toggle("active", modalInstanceSyncEnabled);
+  instanceSyncEnabled.textContent = modalInstanceSyncEnabled ? "Enabled" : "Disabled";
 }
 
 function setCreateSource(next: "custom" | "import" | "modrinth" | "curseforge" | "technic" | "atlauncher" | "ftb") {
@@ -3670,12 +3884,29 @@ async function refreshAll() {
       error: String(err?.message ?? err ?? "Failed to load launcher account state")
     };
   }
+  try {
+    const remoteSyncState = await window.api.cloudSyncGetState();
+    cloudSyncState = {
+      lastSyncedAt: remoteSyncState?.lastSyncedAt ?? null,
+      lastStatus: remoteSyncState?.lastStatus ?? "idle",
+      lastError: remoteSyncState?.lastError ?? null,
+      lastRemoteRevision: remoteSyncState?.lastRemoteRevision ?? null
+    };
+  } catch {
+    cloudSyncState = {
+      lastSyncedAt: null,
+      lastStatus: "error",
+      lastError: "Could not load cloud sync state.",
+      lastRemoteRevision: null
+    };
+  }
   state.instances = await window.api.instancesList();
   updaterState = await window.api.updaterGetState();
   preflightState = await window.api.preflightGetLast();
 
   await renderAccounts();
   await renderInstances();
+  ensureCloudSyncTimer();
   setStatus("");
 
   if (!preflightState) {
@@ -3694,6 +3925,17 @@ async function refreshAll() {
     } catch {
       // Keep startup silent if update check fails.
     }
+  }
+
+  if (getSettings().cloudSyncEnabled && state.launcherAccount?.activeAccountId) {
+    void guarded(async () => {
+      try {
+        await runCloudSync(false);
+        renderSettingsPanels();
+      } catch (err: any) {
+        appendLog(`[cloud-sync] ${String(err?.message ?? err)}`);
+      }
+    });
   }
 }
 
@@ -3725,6 +3967,10 @@ createFilterSnapshots.onclick = () => {
 createLoaderType.onchange = () => {
   updateCreateLoaderUi();
   fillInstancePresetDropdown(instancePreset.value || "none", (createLoaderType.value || "fabric") as LoaderKind);
+};
+instanceSyncEnabled.onclick = () => {
+  modalInstanceSyncEnabled = !modalInstanceSyncEnabled;
+  renderModalInstanceSyncToggle();
 };
 createSourceCustom.onclick = () => setCreateSource("custom");
 createSourceImport.onclick = () => setCreateSource("import");
@@ -3908,6 +4154,8 @@ btnCreate.onclick = async () => {
   setCreateSource("custom");
   selectedModrinthPack = null;
   selectedProviderPack = null;
+  modalInstanceSyncEnabled = true;
+  renderModalInstanceSyncToggle();
   selectedCreateIconPath = null;
   clearExistingIconOnSave = false;
   resetSelectedIconTransform();
@@ -4152,7 +4400,8 @@ modalCreate.onclick = () =>
         neoforgeVersion: undefined as string | undefined,
         memoryMb: Number(newMem.value || 4096),
         accountId: instanceAccount.value || null,
-        instancePreset: selectedPreset
+        instancePreset: selectedPreset,
+        syncEnabled: modalInstanceSyncEnabled
       };
 
       if (loader !== "vanilla") {
@@ -4242,7 +4491,8 @@ modalCreate.onclick = () =>
         neoforgeVersion: nextNeoForgeVersion,
         memoryMb: Number(newMem.value || 4096),
         accountId: instanceAccount.value || null,
-        instancePreset: selectedPreset
+        instancePreset: selectedPreset,
+        syncEnabled: modalInstanceSyncEnabled
       });
 
       if (selectedCreateIconPath) {
@@ -4641,6 +4891,7 @@ document.addEventListener("click", (e) => {
 // Initial
 applySettingsToDom(getSettings());
 setSettingsTab("general");
+renderModalInstanceSyncToggle();
 renderIconTransformUi();
 setIconPreviewSource(null);
 refreshAll();
