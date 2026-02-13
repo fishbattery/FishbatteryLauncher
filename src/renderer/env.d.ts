@@ -10,6 +10,72 @@ declare global {
       accountsAdd: () => Promise<any>;
       accountsSetActive: (id: string | null) => Promise<any>;
       accountsRemove: (id: string) => Promise<any>;
+      launcherAccountGetState: () => Promise<{
+        configured: boolean;
+        signedIn: boolean;
+        activeAccountId: string | null;
+        activeAccount: {
+          id: string;
+          email: string;
+          displayName: string;
+          avatarUrl?: string | null;
+          subscriptionTier?: string | null;
+        } | null;
+        accounts: Array<{
+          id: string;
+          email: string;
+          displayName: string;
+          avatarUrl?: string | null;
+          subscriptionTier?: string | null;
+        }>;
+        updatedAt: number | null;
+        error: string | null;
+      }>;
+      launcherAccountRegister: (email: string, password: string, displayName?: string) => Promise<{
+        configured: boolean;
+        signedIn: boolean;
+        activeAccountId: string | null;
+        activeAccount: any;
+        accounts: any[];
+        updatedAt: number | null;
+        error: string | null;
+      }>;
+      launcherAccountLogin: (email: string, password: string) => Promise<{
+        configured: boolean;
+        signedIn: boolean;
+        activeAccountId: string | null;
+        activeAccount: any;
+        accounts: any[];
+        updatedAt: number | null;
+        error: string | null;
+      }>;
+      launcherAccountGoogleLogin: () => Promise<{
+        configured: boolean;
+        signedIn: boolean;
+        activeAccountId: string | null;
+        activeAccount: any;
+        accounts: any[];
+        updatedAt: number | null;
+        error: string | null;
+      }>;
+      launcherAccountSwitch: (accountId: string) => Promise<{
+        configured: boolean;
+        signedIn: boolean;
+        activeAccountId: string | null;
+        activeAccount: any;
+        accounts: any[];
+        updatedAt: number | null;
+        error: string | null;
+      }>;
+      launcherAccountLogout: () => Promise<{
+        configured: boolean;
+        signedIn: boolean;
+        activeAccountId: string | null;
+        activeAccount: null;
+        accounts: any[];
+        updatedAt: number | null;
+        error: string | null;
+      }>;
 
       instancesList: () => Promise<any>;
       instancesCreate: (cfg: any) => Promise<any>;

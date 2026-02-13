@@ -12,6 +12,14 @@ contextBridge.exposeInMainWorld("api", {
   accountsAdd: () => ipcRenderer.invoke("accounts:add"),
   accountsSetActive: (id: string | null) => ipcRenderer.invoke("accounts:setActive", id),
   accountsRemove: (id: string) => ipcRenderer.invoke("accounts:remove", id),
+  launcherAccountGetState: () => ipcRenderer.invoke("launcherAccount:getState"),
+  launcherAccountRegister: (email: string, password: string, displayName?: string) =>
+    ipcRenderer.invoke("launcherAccount:register", email, password, displayName),
+  launcherAccountLogin: (email: string, password: string) =>
+    ipcRenderer.invoke("launcherAccount:login", email, password),
+  launcherAccountGoogleLogin: () => ipcRenderer.invoke("launcherAccount:googleLogin"),
+  launcherAccountSwitch: (accountId: string) => ipcRenderer.invoke("launcherAccount:switch", accountId),
+  launcherAccountLogout: () => ipcRenderer.invoke("launcherAccount:logout"),
 
   instancesList: () => ipcRenderer.invoke("instances:list"),
   instancesCreate: (cfg: any) => ipcRenderer.invoke("instances:create", cfg),

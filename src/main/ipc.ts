@@ -10,6 +10,14 @@ import {
   setActiveAccount
 } from "./accounts";
 import {
+  getLauncherAccountState,
+  loginLauncherAccountWithGoogleDesktop,
+  loginLauncherAccount,
+  logoutLauncherAccount,
+  registerLauncherAccount,
+  switchLauncherAccount
+} from "./launcherAccount";
+import {
   createInstance,
   listInstances,
   removeInstance,
@@ -396,6 +404,18 @@ export function registerIpc() {
   ipcMain.handle("accounts:setActive", async (_e, id: string | null) => {
     return setActiveAccount(id ?? null);
   });
+
+  // ---------- Launcher account (Fishbattery identity) ----------
+  ipcMain.handle("launcherAccount:getState", async () => getLauncherAccountState());
+  ipcMain.handle("launcherAccount:register", async (_e, email: string, password: string, displayName?: string) =>
+    registerLauncherAccount(email, password, displayName)
+  );
+  ipcMain.handle("launcherAccount:login", async (_e, email: string, password: string) =>
+    loginLauncherAccount(email, password)
+  );
+  ipcMain.handle("launcherAccount:googleLogin", async () => loginLauncherAccountWithGoogleDesktop());
+  ipcMain.handle("launcherAccount:switch", async (_e, accountId: string) => switchLauncherAccount(accountId));
+  ipcMain.handle("launcherAccount:logout", async () => logoutLauncherAccount());
 
   // ---------- Versions ----------
   ipcMain.handle("versions:list", async () => listAllVersions());

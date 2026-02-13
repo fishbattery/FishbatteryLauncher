@@ -158,6 +158,7 @@ const createLoaderHint = $("createLoaderHint");
 let state: any = {
   versions: [],
   accounts: null,
+  launcherAccount: null,
   instances: null
 };
 
@@ -1775,7 +1776,7 @@ function renderSettingsPanels() {
     settingsPanelWindow.appendChild(row);
   }
   {
-    const { row } = makeRow("Window size (W×H)", "Stored locally; apply in main process if desired.");
+    const { row } = makeRow("Window size (WxH)", "Stored locally; apply in main process if desired.");
     const wrap = document.createElement("div");
     wrap.className = "row";
     wrap.style.justifyContent = "flex-end";
@@ -2511,6 +2512,133 @@ function getAccountLabel(a: any) {
   return a?.name ?? a?.username ?? a?.profileName ?? a?.id ?? "Account";
 }
 
+function getLauncherDisplayName(a: any) {
+  return a?.displayName ?? a?.email ?? a?.id ?? "Launcher account";
+}
+
+async function runLauncherAccountAction(fn: () => Promise<void>) {
+  try {
+    await fn();
+  } catch (err: unknown) {
+    const message =
+      (err && typeof err === "object" && "message" in err && String((err as { message?: unknown }).message)) ||
+      "Launcher account request failed.";
+    alert(message);
+  }
+}
+
+type LauncherAuthFormResult = {
+  email: string;
+  password: string;
+  displayName?: string;
+} | null;
+
+async function openLauncherAuthDialog(mode: "login" | "register"): Promise<LauncherAuthFormResult> {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.position = "fixed";
+    backdrop.style.inset = "0";
+    backdrop.style.background = "rgba(5, 12, 22, 0.72)";
+    backdrop.style.display = "grid";
+    backdrop.style.placeItems = "center";
+    backdrop.style.zIndex = "99999";
+
+    const panel = document.createElement("div");
+    panel.style.width = "min(440px, calc(100vw - 24px))";
+    panel.style.padding = "14px";
+    panel.style.borderRadius = "14px";
+    panel.style.border = "1px solid var(--line)";
+    panel.style.background = "var(--panel)";
+    panel.style.boxShadow = "0 16px 50px rgba(0,0,0,.45)";
+
+    const title = document.createElement("h3");
+    title.textContent = mode === "register" ? "Create Fishbattery Account" : "Sign In to Fishbattery";
+    title.style.margin = "0 0 10px";
+
+    const makeInput = (labelText: string, type = "text", placeholder = "") => {
+      const wrap = document.createElement("label");
+      wrap.style.display = "grid";
+      wrap.style.gap = "6px";
+      wrap.style.marginBottom = "10px";
+      const label = document.createElement("span");
+      label.textContent = labelText;
+      label.style.fontSize = "12px";
+      label.className = "muted";
+      const input = document.createElement("input");
+      input.type = type;
+      input.placeholder = placeholder;
+      input.className = "input";
+      wrap.append(label, input);
+      return { wrap, input };
+    };
+
+    const emailField = makeInput("Email", "email", "you@fishbattery.app");
+    const passwordField = makeInput("Password", "password", "");
+    const displayNameField = makeInput("Display name", "text", "Fishbattery");
+
+    panel.appendChild(title);
+    panel.appendChild(emailField.wrap);
+    panel.appendChild(passwordField.wrap);
+    if (mode === "register") panel.appendChild(displayNameField.wrap);
+
+    const actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.justifyContent = "flex-end";
+    actions.style.gap = "8px";
+    actions.style.marginTop = "4px";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn";
+    cancelBtn.textContent = "Cancel";
+
+    const submitBtn = document.createElement("button");
+    submitBtn.className = "btn ok";
+    submitBtn.textContent = mode === "register" ? "Create account" : "Sign in";
+
+    actions.append(cancelBtn, submitBtn);
+    panel.appendChild(actions);
+    backdrop.appendChild(panel);
+    document.body.appendChild(backdrop);
+
+    const cleanup = () => {
+      backdrop.remove();
+      document.removeEventListener("keydown", onEsc);
+    };
+
+    const finish = (value: LauncherAuthFormResult) => {
+      cleanup();
+      resolve(value);
+    };
+
+    const onEsc = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") finish(null);
+    };
+    document.addEventListener("keydown", onEsc);
+
+    backdrop.addEventListener("click", (ev) => {
+      if (ev.target === backdrop) finish(null);
+    });
+
+    cancelBtn.onclick = () => finish(null);
+    submitBtn.onclick = () => {
+      const email = emailField.input.value.trim();
+      const password = passwordField.input.value;
+      const displayName = displayNameField.input.value.trim();
+      if (!email || !password) {
+        alert("Email and password are required.");
+        return;
+      }
+      if (mode === "register" && !displayName) {
+        alert("Display name is required.");
+        return;
+      }
+      finish(mode === "register" ? { email, password, displayName } : { email, password });
+    };
+
+    emailField.input.focus();
+  });
+}
+
 function fallbackAvatarDataUrl(label: string) {
   const txt =
     String(label || "?")
@@ -2527,11 +2655,14 @@ function fallbackAvatarDataUrl(label: string) {
 }
 
 async function renderAccounts() {
+  const launcherState = state.launcherAccount;
+  const launcherActive = launcherState?.activeAccount ?? null;
   const accounts = state.accounts?.accounts ?? [];
   const activeId = state.accounts?.activeId ?? null;
   const avatarById = new Map<string, string | null>();
 
   accountItems.innerHTML = "";
+
   await Promise.all(
     accounts.map(async (a: any) => {
       try {
@@ -2543,23 +2674,28 @@ async function renderAccounts() {
     })
   );
 
-  if (!accounts.length) {
-    accountName.textContent = "Not signed in";
+  const activeMc = accounts.find((a: any) => a.id === activeId) ?? accounts[0] ?? null;
+  if (activeMc) {
+    accountName.textContent = getAccountLabel(activeMc);
+    accountSub.textContent = activeMc?.type ?? activeMc?.provider ?? "Microsoft";
+    accountAvatarImg.classList.remove("loaded");
+    accountAvatarImg.onload = () => accountAvatarImg.classList.add("loaded");
+    accountAvatarImg.src = avatarById.get(activeMc.id) || fallbackAvatarDataUrl(getAccountLabel(activeMc));
+  } else {
+    accountName.textContent = "No Minecraft account";
     accountSub.textContent = "Add an account";
     accountAvatarImg.classList.add("loaded");
     accountAvatarImg.src = fallbackAvatarDataUrl("?");
-  } else {
-    const active = accounts.find((a: any) => a.id === activeId) ?? accounts[0];
-    accountName.textContent = getAccountLabel(active);
-    accountSub.textContent = active?.type ?? active?.provider ?? "Microsoft";
-    accountAvatarImg.classList.remove("loaded");
-    accountAvatarImg.onload = () => accountAvatarImg.classList.add("loaded");
-    accountAvatarImg.src = avatarById.get(active.id) || fallbackAvatarDataUrl(getAccountLabel(active));
   }
   accountAvatarImg.onerror = () => {
     accountAvatarImg.classList.add("loaded");
     accountAvatarImg.src = fallbackAvatarDataUrl(accountName.textContent || "?");
   };
+
+  const mcHeader = document.createElement("div");
+  mcHeader.className = "dropdownHeader";
+  mcHeader.textContent = "Minecraft accounts";
+  accountItems.appendChild(mcHeader);
 
   for (const a of accounts) {
     const item = document.createElement("div");
@@ -2648,6 +2784,144 @@ async function renderAccounts() {
     accountItems.appendChild(item);
   }
 
+  accountAdd.textContent = "+ Add Minecraft account";
+
+  const popSep = document.createElement("div");
+  popSep.className = "popSep";
+  accountItems.appendChild(popSep);
+
+  const launcherHeader = document.createElement("div");
+  launcherHeader.className = "dropdownHeader";
+  launcherHeader.textContent = "Fishbattery account";
+  accountItems.appendChild(launcherHeader);
+
+  const launcherActionRow = document.createElement("div");
+  launcherActionRow.style.padding = "10px 12px";
+  launcherActionRow.style.display = "flex";
+  launcherActionRow.style.gap = "8px";
+  launcherActionRow.style.flexWrap = "wrap";
+
+  const btnLauncherSignIn = document.createElement("button");
+  btnLauncherSignIn.className = "btn";
+  btnLauncherSignIn.textContent = "Sign in";
+  btnLauncherSignIn.onclick = () => {
+    void runLauncherAccountAction(async () => {
+      const values = await openLauncherAuthDialog("login");
+      if (!values) return;
+      state.launcherAccount = await window.api.launcherAccountLogin(values.email, values.password);
+      await renderAccounts();
+      accountDropdown.classList.remove("open");
+    });
+  };
+
+  const btnLauncherRegister = document.createElement("button");
+  btnLauncherRegister.className = "btn";
+  btnLauncherRegister.textContent = "Create account";
+  btnLauncherRegister.onclick = () => {
+    void runLauncherAccountAction(async () => {
+      const values = await openLauncherAuthDialog("register");
+      if (!values) return;
+      state.launcherAccount = await window.api.launcherAccountRegister(
+        values.email,
+        values.password,
+        values.displayName
+      );
+      await renderAccounts();
+      accountDropdown.classList.remove("open");
+    });
+  };
+
+  const btnLauncherGoogle = document.createElement("button");
+  btnLauncherGoogle.className = "btn";
+  btnLauncherGoogle.textContent = "Continue with Google";
+  btnLauncherGoogle.onclick = () => {
+    void runLauncherAccountAction(async () => {
+      alert("A browser window will open for Google sign-in. Complete it, then return to the launcher.");
+      state.launcherAccount = await window.api.launcherAccountGoogleLogin();
+      await renderAccounts();
+      accountDropdown.classList.remove("open");
+    });
+  };
+
+  const btnLauncherLogout = document.createElement("button");
+  btnLauncherLogout.className = "btn";
+  btnLauncherLogout.textContent = "Sign out";
+  btnLauncherLogout.onclick = () => {
+    void runLauncherAccountAction(async () => {
+      state.launcherAccount = await window.api.launcherAccountLogout();
+      await renderAccounts();
+      accountDropdown.classList.remove("open");
+    });
+  };
+
+  if (launcherState?.configured === false) {
+    const warn = document.createElement("div");
+    warn.style.padding = "2px 12px 10px";
+    warn.className = "muted";
+    warn.style.fontSize = "12px";
+    warn.textContent = "Launcher sign-in unavailable.";
+    accountItems.appendChild(warn);
+  } else if (!launcherActive) {
+    launcherActionRow.appendChild(btnLauncherSignIn);
+    launcherActionRow.appendChild(btnLauncherRegister);
+    launcherActionRow.appendChild(btnLauncherGoogle);
+    accountItems.appendChild(launcherActionRow);
+  } else {
+    const launcherAccounts = Array.isArray(launcherState?.accounts) ? launcherState.accounts : [launcherActive];
+    for (const a of launcherAccounts) {
+      const item = document.createElement("div");
+      item.className = "dropdownItem";
+      if (a.id === launcherState?.activeAccountId) item.classList.add("active");
+      item.tabIndex = 0;
+
+      const left = document.createElement("div");
+      left.className = "left";
+
+      const av = document.createElement("span");
+      av.className = "avatar";
+      const img = document.createElement("img");
+      img.classList.add("loaded");
+      img.src = a.avatarUrl || fallbackAvatarDataUrl(getLauncherDisplayName(a));
+      img.onerror = () => {
+        img.classList.add("loaded");
+        img.src = fallbackAvatarDataUrl(getLauncherDisplayName(a));
+      };
+      av.appendChild(img);
+
+      const meta = document.createElement("div");
+      meta.style.display = "flex";
+      meta.style.flexDirection = "column";
+      meta.style.lineHeight = "1.1";
+
+      const title = document.createElement("strong");
+      title.style.fontSize = "13px";
+      title.textContent = getLauncherDisplayName(a) + (a.id === launcherState?.activeAccountId ? " (active)" : "");
+
+      const sub = document.createElement("small");
+      sub.className = "muted";
+      sub.style.fontSize = "11px";
+      sub.textContent = a.subscriptionTier ? `Fishbattery • ${String(a.subscriptionTier)}` : "Fishbattery account";
+
+      meta.appendChild(title);
+      meta.appendChild(sub);
+      left.appendChild(av);
+      left.appendChild(meta);
+      item.appendChild(left);
+
+      item.onclick = () => {
+        void runLauncherAccountAction(async () => {
+          state.launcherAccount = await window.api.launcherAccountSwitch(a.id);
+          await renderAccounts();
+          accountDropdown.classList.remove("open");
+        });
+      };
+
+      accountItems.appendChild(item);
+    }
+    launcherActionRow.appendChild(btnLauncherLogout);
+    accountItems.appendChild(launcherActionRow);
+  }
+
   if (accounts.length && !accountAvatarWarmupInFlight) {
     accountAvatarWarmupInFlight = true;
     void (async () => {
@@ -2667,7 +2941,6 @@ async function renderAccounts() {
     })();
   }
 }
-
 // ---------------- Instances (card layout) ----------------
 function filteredInstances() {
   const q = (searchInstances.value || "").trim().toLowerCase();
@@ -2799,7 +3072,7 @@ async function renderInstances() {
       await renderInstances();
     };
 
-    // ✅ Delete button
+    // Delete button
     const btnDelete = document.createElement("button");
     btnDelete.className = "btn btnDanger";
     btnDelete.textContent = "Delete";
@@ -3160,7 +3433,7 @@ async function runProviderSearch() {
 
 // ---------------- Data refresh ----------------
 async function refreshAll() {
-  setStatus("Loading…");
+  setStatus("Loading...");
 
   const manifest = await window.api.versionsList();
   state.versions = manifest?.versions ?? [];
@@ -3168,6 +3441,19 @@ async function refreshAll() {
   const s = getSettings();
   await window.api.updaterSetChannel(s.updateChannel);
   state.accounts = await window.api.accountsList();
+  try {
+    state.launcherAccount = await window.api.launcherAccountGetState();
+  } catch (err: any) {
+    state.launcherAccount = {
+      configured: false,
+      signedIn: false,
+      activeAccountId: null,
+      activeAccount: null,
+      accounts: [],
+      updatedAt: null,
+      error: String(err?.message ?? err ?? "Failed to load launcher account state")
+    };
+  }
   state.instances = await window.api.instancesList();
   updaterState = await window.api.updaterGetState();
   preflightState = await window.api.preflightGetLast();
@@ -3654,7 +3940,7 @@ modalCreate.onclick = () =>
       };
 
       if (loader !== "vanilla") {
-        setStatus(`Resolving ${loader} loader…`);
+        setStatus(`Resolving ${loader} loader...`);
         const resolved = (createLoaderVersion.value || "").trim() || (await window.api.loaderPickVersion(loader as any, mcVersion)) || "";
         if (loader === "fabric") cfg.fabricLoaderVersion = resolved;
         if (loader === "quilt") cfg.quiltLoaderVersion = resolved;
@@ -3662,7 +3948,7 @@ modalCreate.onclick = () =>
         if (loader === "neoforge") cfg.neoforgeVersion = resolved;
       }
 
-      setStatus("Creating instance…");
+      setStatus("Creating instance...");
       await window.api.instancesCreate(cfg);
 
       if (selectedCreateIconPath) {
@@ -3675,7 +3961,7 @@ modalCreate.onclick = () =>
         await window.api.instancesSetIconFallback(id, cfg.name || "Instance", "green");
       }
 
-      setStatus(`Preparing ${loader}…`);
+      setStatus(`Preparing ${loader}...`);
       await window.api.loaderInstall(
         id,
         mcVersion,
@@ -3757,7 +4043,7 @@ modalCreate.onclick = () =>
         await window.api.instancesClearIcon(editInstanceId);
       }
 
-      setStatus(`Preparing ${nextLoader}…`);
+      setStatus(`Preparing ${nextLoader}...`);
       await window.api.loaderInstall(
         editInstanceId,
         nextVersion,
@@ -4043,7 +4329,7 @@ modalUpdatePacks.onclick = () =>
     if (!editInstanceId) return;
     const inst = (state.instances?.instances ?? []).find((x: any) => x.id === editInstanceId) ?? null;
     if (!inst) return;
-    setStatus("Resolving packs…");
+    setStatus("Resolving packs...");
     try {
       await window.api.rollbackCreateSnapshot(inst.id, "packs-refresh", "Before manual packs refresh");
     } catch (err: any) {
@@ -4157,3 +4443,4 @@ if (window.matchMedia) {
     media.addListener(rerenderThemeFromSystem);
   }
 }
+

@@ -52,3 +52,11 @@ export function getPackCacheDir(): string {
 export function getAccountsPath(): string {
   return path.join(getDataRoot(), "accounts.json");
 }
+
+export function getLauncherAccountsPath(): string {
+  return path.join(getDataRoot(), "launcher-accounts.json");
+}
+
+export function getLauncherSessionPath(): string {
+  return path.join(getDataRoot(), "launcher-session.bin");
+}
