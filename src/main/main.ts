@@ -4,13 +4,19 @@ import { registerIpc } from "./ipc";
 import { CANONICAL_FOLDER } from "./paths";
 import { initUpdater } from "./updater";
 
-app.setPath("userData", path.join(app.getPath("appData"), CANONICAL_FOLDER));
+const userDataSuffix = String(process.env.FISHBATTERY_USERDATA_SUFFIX || "").trim();
+const userDataFolder = userDataSuffix ? `${CANONICAL_FOLDER}-${userDataSuffix}` : CANONICAL_FOLDER;
+app.setPath("userData", path.join(app.getPath("appData"), userDataFolder));
 const localAppDataRoot = process.env.LOCALAPPDATA || app.getPath("appData");
-app.setPath("sessionData", path.join(localAppDataRoot, CANONICAL_FOLDER, "session"));
+app.setPath("sessionData", path.join(localAppDataRoot, userDataFolder, "session"));
 
-const singleInstanceLock = app.requestSingleInstanceLock();
-if (!singleInstanceLock) {
-  app.quit();
+const allowMultiInstance =
+  String(process.env.FISHBATTERY_ALLOW_MULTI_INSTANCE || "").trim() === "1";
+if (!allowMultiInstance) {
+  const singleInstanceLock = app.requestSingleInstanceLock();
+  if (!singleInstanceLock) {
+    app.quit();
+  }
 }
 
 let win: BrowserWindow | null = null;
@@ -50,6 +56,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("second-instance", () => {
+  if (allowMultiInstance) return;
   if (!win) return;
   if (win.isMinimized()) win.restore();
   win.focus();

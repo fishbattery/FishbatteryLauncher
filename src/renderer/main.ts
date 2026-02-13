@@ -1190,7 +1190,8 @@ async function runCloudSync(manual: boolean, forcedPolicy?: "prefer-local" | "pr
   const policy = forcedPolicy || s.cloudSyncConflictPolicy || "ask";
   const result = await window.api.cloudSyncSyncNow({
     settings: getSettings() as unknown as Record<string, unknown>,
-    policy
+    policy,
+    resolveConflict: !!forcedPolicy
   });
 
   cloudSyncState = {
@@ -1213,7 +1214,7 @@ async function runCloudSync(manual: boolean, forcedPolicy?: "prefer-local" | "pr
 
   if (result.status === "conflict" && manual && policy === "ask") {
     const useCloud = confirm(
-      "Cloud sync conflict detected.\n\nOK = use cloud state\nCancel = keep local state"
+      "Cloud sync conflict detected.\n\nOK = use cloud state\nCancel = keep local state\n\nYou can change this behavior in:\nSettings > Install > Conflict policy"
     );
     await runCloudSync(true, useCloud ? "prefer-cloud" : "prefer-local");
     return;

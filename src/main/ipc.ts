@@ -430,6 +430,7 @@ export function registerIpc() {
       payload: {
         settings: Record<string, unknown>;
         policy?: "ask" | "newer-wins" | "prefer-local" | "prefer-cloud";
+        resolveConflict?: boolean;
       }
     ) => syncCloudNow(payload)
   );

@@ -98,6 +98,7 @@ declare global {
       cloudSyncSyncNow: (payload: {
         settings: Record<string, unknown>;
         policy?: "ask" | "newer-wins" | "prefer-local" | "prefer-cloud";
+        resolveConflict?: boolean;
       }) => Promise<{
         ok: boolean;
         status: "up-to-date" | "pushed" | "pulled" | "conflict" | "error" | "skipped";

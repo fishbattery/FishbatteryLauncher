@@ -44,6 +44,7 @@ type CloudSyncState = {
 type SyncNowInput = {
   settings: Record<string, unknown>;
   policy?: SyncConflictPolicy;
+  resolveConflict?: boolean;
 };
 
 export type SyncNowResult = {
@@ -317,6 +318,49 @@ export async function syncCloudNow(input: SyncNowInput): Promise<SyncNowResult> 
     const localChangedSinceLastSync =
       meta.lastSnapshotHash != null ? meta.lastSnapshotHash !== localHash : true;
 
+    const resolvingConflict = input?.resolveConflict === true;
+
+    // If we are explicitly resolving a conflict, obey the selected policy immediately.
+    if (resolvingConflict && (input?.policy === "prefer-cloud" || input?.policy === "prefer-local")) {
+      if (input.policy === "prefer-cloud") {
+        const applied = applyRemoteSnapshot(remote.payload);
+        const next: CloudSyncState = {
+          ...meta,
+          lastSyncedAt: Date.now(),
+          lastStatus: "pulled",
+          lastError: null,
+          lastRemoteRevision: remote.revision,
+          lastSnapshotHash: remoteHash
+        };
+        writeLocalSyncState(next);
+        return {
+          ok: true,
+          status: "pulled",
+          message: "Conflict resolved using cloud state.",
+          lastSyncedAt: next.lastSyncedAt,
+          lastRemoteRevision: next.lastRemoteRevision,
+          settingsPatch: applied.settingsPatch
+        };
+      }
+      const pushed = await pushRemoteSyncState(localSnapshot, remote.revision);
+      const next: CloudSyncState = {
+        ...meta,
+        lastSyncedAt: Date.now(),
+        lastStatus: "pushed",
+        lastError: null,
+        lastRemoteRevision: pushed.revision,
+        lastSnapshotHash: localHash
+      };
+      writeLocalSyncState(next);
+      return {
+        ok: true,
+        status: "pushed",
+        message: "Conflict resolved using local state.",
+        lastSyncedAt: next.lastSyncedAt,
+        lastRemoteRevision: next.lastRemoteRevision
+      };
+    }
+
     // Remote changed, local unchanged -> pull.
     if (remoteChangedSinceLastSync && !localChangedSinceLastSync) {
       const applied = applyRemoteSnapshot(remote.payload);
@@ -438,4 +482,3 @@ export async function syncCloudNow(input: SyncNowInput): Promise<SyncNowResult> 
     };
   }
 }
-
