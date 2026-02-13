@@ -136,7 +136,9 @@ const btnResetInstanceIconTransform = $("btnResetInstanceIconTransform");
 const instanceIconHint = $("instanceIconHint");
 const instanceIconPreviewWrap = $("instanceIconPreviewWrap");
 const instanceIconPreviewFrame = $("instanceIconPreviewFrame");
+const instanceIconPreviewStatus = $("instanceIconPreviewStatus");
 const instanceIconPreviewImage = $("instanceIconPreviewImage") as HTMLImageElement;
+const instanceIconTransformControls = $("instanceIconTransformControls");
 const instanceIconScale = $("instanceIconScale") as HTMLInputElement;
 const instanceIconScaleValue = $("instanceIconScaleValue");
 const instanceIconOffsetX = $("instanceIconOffsetX") as HTMLInputElement;
@@ -204,6 +206,10 @@ let iconPreviewDragStartX = 0;
 let iconPreviewDragStartY = 0;
 let iconPreviewDragOriginX = 0;
 let iconPreviewDragOriginY = 0;
+let iconPreviewNaturalW = 0;
+let iconPreviewNaturalH = 0;
+let iconPreviewDragMaxShiftX = 0;
+let iconPreviewDragMaxShiftY = 0;
 
 function getSelectedIconTransformPayload() {
   return {
@@ -234,29 +240,76 @@ function pathToFileUrl(p: string) {
   const normalized = String(p || "").replace(/\\/g, "/");
   if (!normalized) return "";
   const withSlash = /^[a-zA-Z]:\//.test(normalized) ? `/${normalized}` : normalized;
-  return encodeURI(`file://${withSlash}`);
+  const escaped = withSlash.replace(/#/g, "%23").replace(/\?/g, "%3F");
+  return encodeURI(`file://${escaped}`);
 }
 
 function setIconPreviewSource(filePath: string | null) {
+  void setIconPreviewSourceAsync(filePath);
+}
+
+async function setIconPreviewSourceAsync(filePath: string | null) {
   if (!filePath) {
     instanceIconPreviewWrap.style.display = "none";
+    instanceIconTransformControls.style.display = "none";
     instanceIconPreviewImage.removeAttribute("src");
+    instanceIconPreviewStatus.textContent = "Drag image to reposition. Scroll to zoom.";
+    iconPreviewNaturalW = 0;
+    iconPreviewNaturalH = 0;
     return;
   }
-  instanceIconPreviewImage.src = pathToFileUrl(filePath);
-  instanceIconPreviewImage.onerror = () => {
-    instanceIconPreviewWrap.style.display = "none";
-  };
   instanceIconPreviewWrap.style.display = "";
+  instanceIconTransformControls.style.display = "";
+  instanceIconPreviewStatus.textContent = "Loading preview...";
+  instanceIconPreviewImage.onload = () => {
+    iconPreviewNaturalW = Number(instanceIconPreviewImage.naturalWidth || 0);
+    iconPreviewNaturalH = Number(instanceIconPreviewImage.naturalHeight || 0);
+    instanceIconPreviewStatus.textContent = "Drag image to reposition. Scroll to zoom.";
+    instanceIconTransformControls.style.display = "";
+    renderIconPreviewTransform();
+  };
+  instanceIconPreviewImage.onerror = () => {
+    instanceIconPreviewStatus.textContent = "Could not load preview for this file.";
+    instanceIconTransformControls.style.display = "none";
+    instanceIconPreviewImage.removeAttribute("src");
+    iconPreviewNaturalW = 0;
+    iconPreviewNaturalH = 0;
+  };
+  try {
+    const previewDataUrl = await window.api.instancesPreviewIconDataUrl(filePath);
+    instanceIconPreviewImage.src = previewDataUrl || pathToFileUrl(filePath);
+  } catch {
+    instanceIconPreviewImage.src = pathToFileUrl(filePath);
+  }
   renderIconPreviewTransform();
 }
 
+function getIconPreviewLayout() {
+  const frame = instanceIconPreviewFrame as HTMLElement;
+  const frameW = Math.max(1, frame.clientWidth || 240);
+  const frameH = Math.max(1, frame.clientHeight || 240);
+  const srcW = Math.max(1, iconPreviewNaturalW || 1);
+  const srcH = Math.max(1, iconPreviewNaturalH || 1);
+  const scale = Math.max(0.2, Math.min(5, selectedIconScalePct / 100));
+  const coverScale = Math.max(frameW / srcW, frameH / srcH) * scale;
+  const displayW = srcW * coverScale;
+  const displayH = srcH * coverScale;
+  const maxShiftX = Math.max(0, (displayW - frameW) / 2);
+  const maxShiftY = Math.max(0, (displayH - frameH) / 2);
+  const shiftX = (selectedIconOffsetXPct / 100) * maxShiftX;
+  const shiftY = (selectedIconOffsetYPct / 100) * maxShiftY;
+  const left = (frameW - displayW) / 2 + shiftX;
+  const top = (frameH - displayH) / 2 + shiftY;
+  return { left, top, width: displayW, height: displayH, maxShiftX, maxShiftY };
+}
+
 function renderIconPreviewTransform() {
-  if (!selectedCreateIconPath) return;
-  const scale = Math.max(0.5, Math.min(2.5, selectedIconScalePct / 100));
-  const shiftX = (selectedIconOffsetXPct / 100) * 28;
-  const shiftY = (selectedIconOffsetYPct / 100) * 28;
-  instanceIconPreviewImage.style.transform = `translate(${shiftX}px, ${shiftY}px) scale(${scale})`;
+  if (!selectedCreateIconPath || !iconPreviewNaturalW || !iconPreviewNaturalH) return;
+  const layout = getIconPreviewLayout();
+  instanceIconPreviewImage.style.left = `${layout.left}px`;
+  instanceIconPreviewImage.style.top = `${layout.top}px`;
+  instanceIconPreviewImage.style.width = `${layout.width}px`;
+  instanceIconPreviewImage.style.height = `${layout.height}px`;
 }
 
 // ---------------- Settings ----------------
@@ -2362,7 +2415,7 @@ function setCreateSource(next: "custom" | "import" | "modrinth" | "curseforge" |
   createProviderMarketplace.style.display = isMarket ? "" : "none";
   const isArchiveProvider = next === "curseforge" || next === "technic";
   createModrinthPanel.style.display = next === "modrinth" ? "" : "none";
-  createCurseForgePanel.style.display = isArchiveProvider ? "" : "none";
+  createCurseForgePanel.style.display = next === "modrinth" ? "none" : "";
   if (modalMode === "edit") modalCreate.textContent = "Save";
   else modalCreate.textContent = isCustom ? "Create" : isImport ? "Import" : "Install";
 
@@ -2763,12 +2816,15 @@ instanceIconOffsetY.oninput = () => {
   renderIconTransformUi();
 };
 instanceIconPreviewFrame.onmousedown = (ev: MouseEvent) => {
-  if (!selectedCreateIconPath) return;
+  if (!selectedCreateIconPath || ev.button !== 0) return;
   iconPreviewDragging = true;
   iconPreviewDragStartX = ev.clientX;
   iconPreviewDragStartY = ev.clientY;
   iconPreviewDragOriginX = selectedIconOffsetXPct;
   iconPreviewDragOriginY = selectedIconOffsetYPct;
+  const layout = getIconPreviewLayout();
+  iconPreviewDragMaxShiftX = layout.maxShiftX;
+  iconPreviewDragMaxShiftY = layout.maxShiftY;
   (instanceIconPreviewFrame as HTMLElement).style.cursor = "grabbing";
   ev.preventDefault();
 };
@@ -2776,11 +2832,14 @@ window.addEventListener("mousemove", (ev) => {
   if (!iconPreviewDragging) return;
   const dx = ev.clientX - iconPreviewDragStartX;
   const dy = ev.clientY - iconPreviewDragStartY;
-  const rect = (instanceIconPreviewFrame as HTMLElement).getBoundingClientRect();
-  const denomX = Math.max(24, rect.width / 2);
-  const denomY = Math.max(24, rect.height / 2);
-  const nextX = iconPreviewDragOriginX + (dx / denomX) * 100;
-  const nextY = iconPreviewDragOriginY + (dy / denomY) * 100;
+  const nextX =
+    iconPreviewDragMaxShiftX > 0
+      ? iconPreviewDragOriginX + (dx / iconPreviewDragMaxShiftX) * 100
+      : iconPreviewDragOriginX;
+  const nextY =
+    iconPreviewDragMaxShiftY > 0
+      ? iconPreviewDragOriginY + (dy / iconPreviewDragMaxShiftY) * 100
+      : iconPreviewDragOriginY;
   selectedIconOffsetXPct = Math.max(-100, Math.min(100, Math.round(nextX)));
   selectedIconOffsetYPct = Math.max(-100, Math.min(100, Math.round(nextY)));
   renderIconTransformUi();
@@ -2790,6 +2849,13 @@ window.addEventListener("mouseup", () => {
   iconPreviewDragging = false;
   (instanceIconPreviewFrame as HTMLElement).style.cursor = "grab";
 });
+instanceIconPreviewFrame.onwheel = (ev: WheelEvent) => {
+  if (!selectedCreateIconPath) return;
+  ev.preventDefault();
+  const delta = ev.deltaY < 0 ? 4 : -4;
+  selectedIconScalePct = Math.max(50, Math.min(250, selectedIconScalePct + delta));
+  renderIconTransformUi();
+};
 
 btnCreate.onclick = async () => {
   modalMode = "create";

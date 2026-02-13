@@ -17,6 +17,7 @@ declare global {
       instancesRemove: (id: string) => Promise<any>;
       instancesDuplicate: (id: string) => Promise<any>;
       instancesPickIcon: () => Promise<string | null>;
+      instancesPreviewIconDataUrl: (filePath: string) => Promise<string>;
       instancesSetIconFromFile: (
         id: string,
         filePath: string,

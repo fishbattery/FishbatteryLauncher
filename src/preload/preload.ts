@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("api", {
   instancesRemove: (id: string) => ipcRenderer.invoke("instances:remove", id),
   instancesDuplicate: (id: string) => ipcRenderer.invoke("instances:duplicate", id),
   instancesPickIcon: () => ipcRenderer.invoke("instances:pickIcon"),
+  instancesPreviewIconDataUrl: (filePath: string) => ipcRenderer.invoke("instances:previewIconDataUrl", filePath),
   instancesSetIconFromFile: (
     id: string,
     filePath: string,

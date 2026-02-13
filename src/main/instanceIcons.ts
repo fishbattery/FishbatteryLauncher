@@ -108,9 +108,13 @@ export function setInstanceIconFallback(instanceId: string, label: string, theme
   <text x="128" y="148" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="88" font-weight="700" fill="${colors.c}">${text}</text>
 </svg>`;
 
+  const svgDataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  const rendered = nativeImage.createFromDataURL(svgDataUrl);
+  if (rendered.isEmpty()) throw new Error("Could not render fallback icon");
+  const png = rendered.resize({ width: 256, height: 256, quality: "best" }).toPNG();
   const out = iconPath(instanceId);
   ensureDir(path.dirname(out));
-  fs.writeFileSync(out, Buffer.from(svg, "utf8"));
+  fs.writeFileSync(out, png);
   return out;
 }
 
@@ -120,6 +124,11 @@ export function getInstanceIconDataUrl(instanceId: string): string | null {
   try {
     const buf = fs.readFileSync(p);
     if (!buf.length) return null;
+    const textHead = buf.subarray(0, Math.min(buf.length, 256)).toString("utf8").trimStart();
+    const looksLikeSvg = textHead.startsWith("<svg") || textHead.startsWith("<?xml");
+    if (looksLikeSvg) {
+      return `data:image/svg+xml;base64,${buf.toString("base64")}`;
+    }
     const ext = path.extname(p).toLowerCase();
     const mime =
       ext === ".jpg" || ext === ".jpeg"

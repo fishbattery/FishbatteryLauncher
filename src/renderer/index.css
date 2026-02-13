@@ -736,6 +736,55 @@ body{
   background:linear-gradient(145deg, rgba(61,220,132,.18), rgba(61,220,132,.04));
 }
 
+.instanceIconPreviewFrame{
+  width: 240px;
+  height: 240px;
+  margin-top: 6px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid rgba(61,117,166,.55);
+  background:
+    linear-gradient(45deg, rgba(255,255,255,.03) 25%, transparent 25%) 0 0 / 16px 16px,
+    linear-gradient(-45deg, rgba(255,255,255,.03) 25%, transparent 25%) 0 8px / 16px 16px,
+    linear-gradient(135deg,#12303f,#1b577a);
+  cursor: grab;
+}
+
+#instanceIconTransformControls input[type="range"]{
+  appearance: none;
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.16);
+  outline: none;
+}
+
+#instanceIconTransformControls input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(61,220,132,.75);
+  background: #dfffea;
+  box-shadow: 0 0 0 2px rgba(61,220,132,.2);
+}
+
+#instanceIconTransformControls input[type="range"]::-moz-range-track{
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.16);
+}
+
+#instanceIconTransformControls input[type="range"]::-moz-range-thumb{
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(61,220,132,.75);
+  background: #dfffea;
+  box-shadow: 0 0 0 2px rgba(61,220,132,.2);
+}
+
 #modalModsList,
 #modalLocalModsList,
 #recommendedPacksList,
@@ -866,4 +915,37 @@ select optgroup {
 .dropdownToggleRow .switch {
   transform: scale(0.92);
   transform-origin: right center;
+}
+
+/* =========================
+   THEMED SCROLLBARS
+   ========================= */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(61, 220, 132, 0.45) rgba(255, 255, 255, 0.08);
+}
+
+*::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(61, 220, 132, 0.55), rgba(61, 220, 132, 0.35));
+  border-radius: 10px;
+  border: 2px solid rgba(10, 18, 22, 0.65);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(61, 220, 132, 0.75), rgba(61, 220, 132, 0.5));
+}
+
+*::-webkit-scrollbar-corner {
+  background: rgba(255, 255, 255, 0.06);
 }

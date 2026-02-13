@@ -1,5 +1,6 @@
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { listAllVersions } from "./versions";
 import {
   addMicrosoftAccountInteractive,
@@ -154,6 +155,22 @@ export function registerIpc() {
     const picked = owner ? await dialog.showOpenDialog(owner, openOpts) : await dialog.showOpenDialog(openOpts);
     if (picked.canceled || !picked.filePaths?.length) return null;
     return picked.filePaths[0];
+  });
+
+  ipcMain.handle("instances:previewIconDataUrl", async (_e, filePath: string) => {
+    if (!filePath) throw new Error("instances:previewIconDataUrl: filePath missing");
+    const ext = path.extname(String(filePath)).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".webp": "image/webp",
+      ".gif": "image/gif",
+      ".bmp": "image/bmp"
+    };
+    const mime = mimeMap[ext] || "application/octet-stream";
+    const bytes = readFileSync(String(filePath));
+    return `data:${mime};base64,${bytes.toString("base64")}`;
   });
 
   ipcMain.handle(

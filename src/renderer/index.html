@@ -214,15 +214,15 @@
               </div>
               <div id="instanceIconHint" class="muted" style="font-size:12px; margin-top:6px">No custom icon selected.</div>
               <div id="instanceIconPreviewWrap" style="margin-top:8px; display:none">
-                <div class="setHelp">Drag to reposition preview</div>
+                <div id="instanceIconPreviewStatus" class="setHelp">Drag image to reposition. Scroll to zoom.</div>
                 <div
                   id="instanceIconPreviewFrame"
-                  style="width:96px; height:96px; border-radius:14px; overflow:hidden; border:1px solid rgba(61,117,166,.55); margin-top:6px; position:relative; cursor:grab; background:linear-gradient(135deg,#12303f,#1b577a)"
+                  class="instanceIconPreviewFrame"
                 >
                   <img
                     id="instanceIconPreviewImage"
                     alt="Icon preview"
-                    style="position:absolute; left:0; top:0; width:100%; height:100%; object-fit:cover; transform-origin:center center; user-select:none; pointer-events:none"
+                    style="position:absolute; left:0; top:0; user-select:none; pointer-events:none"
                   />
                 </div>
               </div>
@@ -233,12 +233,12 @@
                   <input id="instanceIconScale" type="range" min="50" max="250" step="1" value="100" style="flex:1" />
                   <span id="instanceIconScaleValue" class="muted" style="font-size:12px; min-width:48px">100%</span>
                 </div>
-                <div class="row" style="justify-content:flex-start; gap:8px; margin-top:4px">
+                <div class="row" style="justify-content:flex-start; gap:8px; margin-top:4px; display:none">
                   <label for="instanceIconOffsetX" style="min-width:78px">Position X</label>
                   <input id="instanceIconOffsetX" type="range" min="-100" max="100" step="1" value="0" style="flex:1" />
                   <span id="instanceIconOffsetXValue" class="muted" style="font-size:12px; min-width:48px">0%</span>
                 </div>
-                <div class="row" style="justify-content:flex-start; gap:8px; margin-top:4px">
+                <div class="row" style="justify-content:flex-start; gap:8px; margin-top:4px; display:none">
                   <label for="instanceIconOffsetY" style="min-width:78px">Position Y</label>
                   <input id="instanceIconOffsetY" type="range" min="-100" max="100" step="1" value="0" style="flex:1" />
                   <span id="instanceIconOffsetYValue" class="muted" style="font-size:12px; min-width:48px">0%</span>
