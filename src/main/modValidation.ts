@@ -34,7 +34,14 @@ type ModMeta = {
   source: "top" | "nested";
 };
 
-const PROVIDED_DEPENDENCIES = new Set(["minecraft", "fabricloader", "fabric", "java"]);
+const PROVIDED_DEPENDENCIES = new Set([
+  "minecraft",
+  "fabricloader",
+  "fabric",
+  "java",
+  // Provided transitively by Fabric Loader in modern packs.
+  "mixinextras"
+]);
 
 function normalizeModId(id: string) {
   return String(id || "")
@@ -263,7 +270,7 @@ export function validateInstanceMods(instanceId: string): ValidationResult {
     if (list.length > 1) {
       issues.push({
         code: "duplicate-mod-id",
-        severity: "critical",
+        severity: "warning",
         title: `Duplicate mod detected: ${id}`,
         detail: `Multiple jars provide mod id "${id}". Keep one version only.`,
         files: list.map((x) => path.basename(x.file)),
@@ -289,14 +296,17 @@ export function validateInstanceMods(instanceId: string): ValidationResult {
         }
         continue;
       }
-      if (PROVIDED_DEPENDENCIES.has(depId)) continue;
       const depNorm = normalizeModId(depId);
+      if (PROVIDED_DEPENDENCIES.has(depId) || PROVIDED_DEPENDENCIES.has(depNorm)) continue;
       if (!availableIds.has(depId) && !availableNormalized.has(depNorm)) {
+        const likelyBundledOrTransitive = m.source === "nested";
         issues.push({
           code: "missing-dependency",
-          severity: "critical",
+          severity: likelyBundledOrTransitive ? "warning" : "critical",
           title: `Missing dependency for ${m.id}`,
-          detail: `${m.id} requires ${depId}${depConstraint ? ` (${depConstraint})` : ""}.`,
+          detail: likelyBundledOrTransitive
+            ? `${m.id} requires ${depId}${depConstraint ? ` (${depConstraint})` : ""}. This may be provided transitively by jar-in-jar dependencies.`
+            : `${m.id} requires ${depId}${depConstraint ? ` (${depConstraint})` : ""}.`,
           files: [path.basename(m.file)],
           modIds: [m.id, depId]
         });

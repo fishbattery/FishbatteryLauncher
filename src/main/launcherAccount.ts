@@ -55,11 +55,23 @@ type AuthResponse = {
   accessToken?: string;
   token?: string;
   refreshToken?: string;
+  requiresTwoFactor?: boolean;
+  challengeToken?: string;
   account?: unknown;
   user?: unknown;
   accounts?: unknown;
   activeAccountId?: string;
 };
+
+export type LauncherLoginResult =
+  | {
+      requiresTwoFactor: false;
+      state: LauncherAccountState;
+    }
+  | {
+      requiresTwoFactor: true;
+      challengeToken: string;
+    };
 
 type GoogleDesktopStartResponse = {
   authUrl: string;
@@ -91,6 +103,7 @@ function getApiPath(envKey: string, fallback: string): string {
 
 const PATH_REGISTER = getApiPath("FISHBATTERY_ACCOUNT_REGISTER_PATH", "/v1/auth/register");
 const PATH_LOGIN = getApiPath("FISHBATTERY_ACCOUNT_LOGIN_PATH", "/v1/auth/login");
+const PATH_LOGIN_2FA = getApiPath("FISHBATTERY_ACCOUNT_LOGIN_2FA_PATH", "/v1/auth/login/2fa");
 const PATH_LOGOUT = getApiPath("FISHBATTERY_ACCOUNT_LOGOUT_PATH", "/v1/auth/logout");
 const PATH_SESSION = getApiPath("FISHBATTERY_ACCOUNT_SESSION_PATH", "/v1/auth/session");
 const PATH_SWITCH = getApiPath("FISHBATTERY_ACCOUNT_SWITCH_PATH", "/v1/auth/switch");
@@ -304,7 +317,7 @@ export async function registerLauncherAccount(
   return applyAuthResponse(response);
 }
 
-export async function loginLauncherAccount(email: string, password: string): Promise<LauncherAccountState> {
+export async function loginLauncherAccount(email: string, password: string): Promise<LauncherLoginResult> {
   const normalizedEmail = String(email || "").trim().toLowerCase();
   const normalizedPassword = String(password || "");
   if (!normalizedEmail || !normalizedPassword) throw new Error("Email and password are required.");
@@ -312,6 +325,27 @@ export async function loginLauncherAccount(email: string, password: string): Pro
   const response = await requestAuth(PATH_LOGIN, {
     method: "POST",
     body: { email: normalizedEmail, password: normalizedPassword }
+  });
+  if (response?.requiresTwoFactor) {
+    const challengeToken = String(response.challengeToken || "").trim();
+    if (!challengeToken) throw new Error("2FA challenge is missing. Please try signing in again.");
+    return { requiresTwoFactor: true, challengeToken };
+  }
+  return { requiresTwoFactor: false, state: applyAuthResponse(response) };
+}
+
+export async function loginLauncherAccountWithTwoFactor(
+  challengeToken: string,
+  code: string
+): Promise<LauncherAccountState> {
+  const normalizedChallenge = String(challengeToken || "").trim();
+  const normalizedCode = String(code || "").replace(/\s+/g, "");
+  if (!normalizedChallenge) throw new Error("2FA challenge token is required.");
+  if (!/^\d{6}$/.test(normalizedCode)) throw new Error("Enter a valid 6-digit authenticator code.");
+
+  const response = await requestAuth(PATH_LOGIN_2FA, {
+    method: "POST",
+    body: { challengeToken: normalizedChallenge, code: normalizedCode }
   });
   return applyAuthResponse(response);
 }

@@ -1,4 +1,4 @@
-// FishbatteryLauncher
+﻿// FishbatteryLauncher
 // Copyright (C) 2026 Gudmundur Magnus Johannsson
 // Licensed under GPL v3
 
@@ -50,6 +50,7 @@ const btnClearLogs = $("btnClearLogs");
 const btnAnalyzeLogs = $("btnAnalyzeLogs");
 const btnApplyDiagnosisFix = $("btnApplyDiagnosisFix") as HTMLButtonElement;
 const btnToggleDiagnosisDetails = $("btnToggleDiagnosisDetails") as HTMLButtonElement;
+const btnToggleDebugLogs = $("btnToggleDebugLogs") as HTMLButtonElement;
 const btnCopyDiagnosisReport = $("btnCopyDiagnosisReport") as HTMLButtonElement;
 const launchDiagnosis = $("launchDiagnosis");
 const launchDiagnosisDetails = $("launchDiagnosisDetails");
@@ -181,6 +182,7 @@ let editServerId: string | null = null;
 let launchLogBuffer: string[] = [];
 let latestDiagnosis: any = null;
 let diagnosisDetailsOpen = false;
+let debugLogsVisible = false;
 
 type UpdaterUiState = {
   status: "idle" | "checking" | "update-available" | "up-to-date" | "downloading" | "downloaded" | "error";
@@ -916,10 +918,27 @@ function appendLog(line: string) {
   if (launchLogBuffer.length > 500) {
     launchLogBuffer = launchLogBuffer.slice(launchLogBuffer.length - 500);
   }
+  const status = summarizeLogForStatus(line);
+  if (status) setStatus(status);
 }
 
 function setStatus(text: string) {
   statusText.textContent = text || "";
+}
+
+function summarizeLogForStatus(line: string) {
+  const raw = String(line || "").trim();
+  if (!raw) return "";
+  if (/^\s*at\s+\S+/.test(raw)) return "";
+  const cleaned = raw.replace(/^\[[^\]]+\]\s*/, "").trim();
+  if (!cleaned) return "";
+  if (cleaned.length > 180) return "";
+  return cleaned;
+}
+
+function renderDebugLogsVisibility() {
+  logsEl.style.display = debugLogsVisible ? "" : "none";
+  btnToggleDebugLogs.textContent = debugLogsVisible ? "Hide Debug Logs" : "Show Debug Logs";
 }
 
 function findDiagnosisEvidence(diag: any, lines: string[]) {
@@ -1211,7 +1230,7 @@ function renderFileList(
 
     const sub = document.createElement("div");
     sub.className = "setHelp";
-    sub.textContent = formatBytes(it.size) + (it.name.endsWith(".disabled") ? " • Disabled" : "");
+    sub.textContent = formatBytes(it.size) + (it.name.endsWith(".disabled") ? " â€¢ Disabled" : "");
 
     left.appendChild(nameEl);
     left.appendChild(sub);
@@ -2480,8 +2499,11 @@ async function launchForInstance(inst: any, serverAddress?: string) {
 
   const s = getSettings();
   const validation = await window.api.modsValidate(inst.id);
-  if (validation.summary === "critical") {
-    const detail = validation.issues
+  const allIssues = validation.issues || [];
+  const blockingIssues = allIssues.filter(isBlockingValidationIssue);
+  const advisoryIssues = allIssues.filter((issue) => !isBlockingValidationIssue(issue));
+  if (blockingIssues.length) {
+    const detail = blockingIssues
       .slice(0, 8)
       .map((x) => `- ${x.title}`)
       .join("\n");
@@ -2489,8 +2511,8 @@ async function launchForInstance(inst: any, serverAddress?: string) {
       `Critical mod conflicts detected:\n${detail}\n\nUse "Update Mods" or fix duplicates first.\nLaunch anyway?`
     );
     if (!launchAnyway) return;
-  } else if (validation.summary === "warnings") {
-    appendLog("[validation] Warnings detected. Open Mods tab for details.");
+  } else if ((validation.issues || []).length) {
+    appendLog("[validation] Advisory issues detected. Open Mods tab for details.");
   }
 
   appendLog(
@@ -2625,7 +2647,7 @@ async function renderRecommendedPacks(instanceId: string | null) {
 
     const sub = document.createElement("div");
     sub.className = "setHelp";
-    sub.textContent = statusBits.join(" • ");
+    sub.textContent = statusBits.join(" â€¢ ");
 
     left.appendChild(name);
     left.appendChild(sub);
@@ -2688,6 +2710,14 @@ function validationIssueSuggestions(issue: any) {
   return [];
 }
 
+function isBlockingValidationIssue(issue: any) {
+  const code = String(issue?.code || "");
+  const severity = String(issue?.severity || "");
+  if (severity !== "critical") return false;
+  if (code === "duplicate-mod-id" || code === "missing-dependency") return false;
+  return true;
+}
+
 function buildModUpdateSummary(plan: any) {
   const lines: string[] = [];
   lines.push(`Smart update analysis (${new Date(plan?.checkedAt || Date.now()).toLocaleString()})`);
@@ -2743,6 +2773,10 @@ async function renderCompatibilityGuidance(instanceId: string | null) {
   const validation = isFabricLoader
     ? await window.api.modsValidate(instanceId)
     : { summary: "no-issues", issues: [] as any[] };
+  const allIssues = validation.issues || [];
+  const blockingIssues = allIssues.filter(isBlockingValidationIssue);
+  const advisoryIssues = allIssues.filter((issue) => !isBlockingValidationIssue(issue));
+  const hasBlockingIssues = blockingIssues.length > 0;
   const valCard = document.createElement("div");
   valCard.className = "setRow";
   valCard.style.marginBottom = "8px";
@@ -2754,15 +2788,21 @@ async function renderCompatibilityGuidance(instanceId: string | null) {
   const valTitle = document.createElement("div");
   valTitle.className = "setLabel";
   valTitle.textContent =
-    validation.summary === "no-issues"
+    hasBlockingIssues
+      ? "Validation: blocking conflicts"
+      : allIssues.length === 0
       ? "Validation: no issues"
-      : validation.summary === "warnings"
-        ? "Validation: warnings"
-        : "Validation: critical conflicts";
+      : "Validation: advisory notes";
 
   const valSub = document.createElement("div");
   valSub.className = "setHelp";
-  valSub.textContent = validation.issues.slice(0, 3).map((x) => x.title).join(" • ") || "All clear.";
+  if (hasBlockingIssues) {
+    valSub.textContent = blockingIssues.slice(0, 3).map((x) => x.title).join(" • ");
+  } else if (advisoryIssues.length) {
+    valSub.textContent = `${advisoryIssues.length} non-blocking advisory note(s). Minecraft can still launch normally.`;
+  } else {
+    valSub.textContent = "All clear.";
+  }
   valLeft.appendChild(valTitle);
   valLeft.appendChild(valSub);
 
@@ -2799,8 +2839,9 @@ async function renderCompatibilityGuidance(instanceId: string | null) {
   valCard.appendChild(valActions);
   modalCompatGuidance.appendChild(valCard);
 
-  if ((validation.issues ?? []).length) {
-    for (const issue of validation.issues) {
+  const issuesToRender = hasBlockingIssues ? blockingIssues : [];
+  if (issuesToRender.length) {
+    for (const issue of issuesToRender) {
       const row = document.createElement("div");
       row.className = "setRow";
       row.style.marginBottom = "8px";
@@ -2980,7 +3021,7 @@ async function renderInstanceMods(instanceId: string | null) {
     if (reason) bits.push(reason);
     const alts = MOD_ALTERNATIVES[m.id];
     if (reason && alts?.length) bits.push(`Try: ${alts.join(" | ")}`);
-    sub.textContent = bits.join(" • ");
+    sub.textContent = bits.join(" â€¢ ");
 
     left.appendChild(name);
     left.appendChild(sub);
@@ -3051,6 +3092,104 @@ type LauncherProfileFormResult = {
   displayName: string;
   avatarUrl: string | null;
 } | null;
+
+async function openLauncherTwoFactorDialog(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.position = "fixed";
+    backdrop.style.inset = "0";
+    backdrop.style.background = "rgba(5, 12, 22, 0.72)";
+    backdrop.style.display = "grid";
+    backdrop.style.placeItems = "center";
+    backdrop.style.zIndex = "100000";
+
+    const panel = document.createElement("div");
+    panel.style.width = "min(420px, calc(100vw - 24px))";
+    panel.style.padding = "14px";
+    panel.style.borderRadius = "14px";
+    panel.style.border = "1px solid var(--line)";
+    panel.style.background = "var(--panel)";
+    panel.style.boxShadow = "0 16px 50px rgba(0,0,0,.45)";
+
+    const title = document.createElement("h3");
+    title.textContent = "Authenticator code required";
+    title.style.margin = "0 0 8px";
+
+    const hint = document.createElement("p");
+    hint.className = "muted";
+    hint.style.margin = "0 0 10px";
+    hint.textContent = "Enter the 6-digit code from your authenticator app.";
+
+    const field = document.createElement("label");
+    field.style.display = "grid";
+    field.style.gap = "6px";
+    field.style.marginBottom = "10px";
+    const fieldLabel = document.createElement("span");
+    fieldLabel.className = "muted";
+    fieldLabel.style.fontSize = "12px";
+    fieldLabel.textContent = "Code";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "input";
+    input.inputMode = "numeric";
+    input.maxLength = 6;
+    input.placeholder = "123456";
+    field.append(fieldLabel, input);
+
+    const status = document.createElement("p");
+    status.className = "muted";
+    status.style.margin = "6px 0 0";
+    status.style.fontSize = "13px";
+
+    const actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "8px";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn";
+    cancelBtn.textContent = "Cancel";
+    const verifyBtn = document.createElement("button");
+    verifyBtn.className = "btn ok";
+    verifyBtn.textContent = "Verify code";
+    actions.append(cancelBtn, verifyBtn);
+
+    panel.append(title, hint, field, actions, status);
+    backdrop.appendChild(panel);
+    document.body.appendChild(backdrop);
+
+    const cleanup = () => {
+      backdrop.remove();
+      document.removeEventListener("keydown", onEsc);
+    };
+    const finish = (value: string | null) => {
+      cleanup();
+      resolve(value);
+    };
+    const onEsc = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") finish(null);
+    };
+    document.addEventListener("keydown", onEsc);
+    backdrop.addEventListener("click", (ev) => {
+      if (ev.target === backdrop) finish(null);
+    });
+    cancelBtn.onclick = () => finish(null);
+
+    const submit = () => {
+      const code = input.value.replace(/\s+/g, "");
+      if (!/^\d{6}$/.test(code)) {
+        status.textContent = "Enter a valid 6-digit code.";
+        return;
+      }
+      finish(code);
+    };
+    verifyBtn.onclick = submit;
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter") return;
+      ev.preventDefault();
+      submit();
+    });
+    input.focus();
+  });
+}
 
 async function openLauncherAuthDialog(mode: "login" | "register"): Promise<LauncherAuthFormResult> {
   return new Promise((resolve) => {
@@ -3659,7 +3798,14 @@ async function renderAccounts() {
       } else if (values.mode === "register") {
         state.launcherAccount = await window.api.launcherAccountRegister(values.email, values.password, values.displayName);
       } else {
-        state.launcherAccount = await window.api.launcherAccountLogin(values.email, values.password);
+        const loginResult = await window.api.launcherAccountLogin(values.email, values.password);
+        if (loginResult?.requiresTwoFactor) {
+          const code = await openLauncherTwoFactorDialog();
+          if (!code) return;
+          state.launcherAccount = await window.api.launcherAccountLogin2fa(loginResult.challengeToken, code);
+        } else {
+          state.launcherAccount = loginResult.state;
+        }
       }
       await refreshLauncherSubscription();
       await renderAccounts();
@@ -3833,6 +3979,26 @@ async function renderInstances() {
   const items = filteredInstances();
   const active = state.instances?.activeInstanceId ?? null;
   instancesGrid.innerHTML = "";
+
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "emptyInstances";
+    empty.innerHTML = `
+      <strong>No instances yet</strong>
+      <p>Create your first instance or import a modpack to get started.</p>
+      <div class="emptyInstancesActions">
+        <button id="emptyCreateInstance" class="btn btnPrimary" type="button">Create Instance</button>
+        <button id="emptyImportInstance" class="btn" type="button">Import Modpack</button>
+      </div>
+    `;
+    instancesGrid.appendChild(empty);
+    const emptyCreateInstance = empty.querySelector("#emptyCreateInstance") as HTMLButtonElement | null;
+    const emptyImportInstance = empty.querySelector("#emptyImportInstance") as HTMLButtonElement | null;
+    if (emptyCreateInstance) emptyCreateInstance.onclick = () => btnCreate.click();
+    if (emptyImportInstance) emptyImportInstance.onclick = () => btnImport.click();
+    return;
+  }
+
   const icons = new Map<string, string | null>();
   await Promise.all(
     items.map(async (i: any) => {
@@ -3888,7 +4054,12 @@ async function renderInstances() {
     badges.appendChild(b1);
     badges.appendChild(b2);
 
+    const subtext = document.createElement("small");
+    subtext.className = "instanceSubtext";
+    subtext.textContent = `${i.loader ?? "fabric"} â€¢ Minecraft ${i.mcVersion ?? "unknown"}`;
+
     meta.appendChild(title);
+    meta.appendChild(subtext);
     meta.appendChild(badges);
 
     const actions = document.createElement("div");
@@ -3899,7 +4070,7 @@ async function renderInstances() {
     btnEdit.type = "button";
     btnEdit.title = "Edit instance";
     btnEdit.setAttribute("aria-label", `Edit ${i.name ?? "instance"}`);
-    btnEdit.textContent = "⚙";
+    btnEdit.textContent = "âš™";
     btnEdit.onclick = async () => {
       modalMode = "edit";
       editInstanceId = i.id;
@@ -3944,9 +4115,21 @@ async function renderInstances() {
       openModal();
     };
 
+    const btnPlay = document.createElement("button");
+    btnPlay.className = "btn btnPrimary";
+    btnPlay.textContent = "Play";
+    btnPlay.onclick = async () => {
+      if (state.instances?.activeInstanceId !== i.id) {
+        await window.api.instancesSetActive(i.id);
+        state.instances = await window.api.instancesList();
+        await renderInstances();
+      }
+      await launchForInstance(i);
+    };
+
     const btnUse = document.createElement("button");
-    btnUse.className = "btn btnPrimary";
-    btnUse.textContent = i.id === active ? "Selected" : "Select";
+    btnUse.className = "btn";
+    btnUse.textContent = i.id === active ? "Active" : "Set Active";
     btnUse.onclick = async () => {
       await window.api.instancesSetActive(i.id);
       state.instances = await window.api.instancesList();
@@ -3977,7 +4160,7 @@ async function renderInstances() {
 
     const btnJoin = document.createElement("button");
     btnJoin.className = "btn";
-    btnJoin.textContent = "Join";
+    btnJoin.textContent = "Join Server";
     btnJoin.onclick = async () => {
       const s = await window.api.serversList(i.id);
       const preferred = (s?.servers ?? []).find((x: any) => x.id === s.preferredServerId) ?? null;
@@ -3993,10 +4176,11 @@ async function renderInstances() {
       await launchForInstance(i, String(preferred.address || "").trim());
     };
 
+    actions.appendChild(btnPlay);
+    actions.appendChild(btnUse);
     actions.appendChild(btnJoin);
     actions.appendChild(btnExport);
     actions.appendChild(btnDelete);
-    actions.appendChild(btnUse);
 
     card.appendChild(btnEdit);
     inner.appendChild(thumb);
@@ -4220,7 +4404,7 @@ async function runModrinthSearch() {
     meta.className = "setHelp";
     const mc = h.mcVersion || "unknown MC";
     const loader = h.loader || "unknown loader";
-    meta.textContent = `MC ${mc} • ${loader}`;
+    meta.textContent = `MC ${mc} â€¢ ${loader}`;
     left.appendChild(meta);
 
     row.appendChild(left);
@@ -4228,7 +4412,7 @@ async function runModrinthSearch() {
     const btn = document.createElement("button");
     btn.className = "btn";
     const selected = selectedModrinthPack?.projectId === h.projectId;
-    btn.textContent = selected ? "Selected" : "Select";
+    btn.textContent = selected ? "Active" : "Choose";
     btn.onclick = () => {
       selectedModrinthPack = {
         projectId: h.projectId,
@@ -4291,13 +4475,13 @@ async function runProviderSearch() {
 
     const meta = document.createElement("div");
     meta.className = "setHelp";
-    meta.textContent = `MC ${h.mcVersion} • ${h.loader}`;
+    meta.textContent = `MC ${h.mcVersion} â€¢ ${h.loader}`;
     left.appendChild(meta);
 
     if (Array.isArray(h.tags) && h.tags.length) {
       const tags = document.createElement("div");
       tags.className = "setHelp";
-      tags.textContent = `Tags: ${h.tags.slice(0, 4).join(" • ")}`;
+      tags.textContent = `Tags: ${h.tags.slice(0, 4).join(" â€¢ ")}`;
       left.appendChild(tags);
     }
 
@@ -4306,7 +4490,7 @@ async function runProviderSearch() {
     const btn = document.createElement("button");
     btn.className = "btn";
     const selected = selectedProviderPack?.id === h.id;
-    btn.textContent = selected ? "Selected" : "Select";
+    btn.textContent = selected ? "Active" : "Choose";
     btn.onclick = () => {
       selectedProviderPack = { id: h.id, name: h.name, iconUrl: h.iconUrl || null };
       void runProviderSearch();
@@ -5070,6 +5254,11 @@ btnClearLogs.onclick = () => {
   logsEl.textContent = "";
   launchLogBuffer = [];
   renderLaunchDiagnosis(null);
+  setStatus("");
+};
+btnToggleDebugLogs.onclick = () => {
+  debugLogsVisible = !debugLogsVisible;
+  renderDebugLogsVisibility();
 };
 btnAnalyzeLogs.onclick = () =>
   guarded(async () => {
@@ -5472,6 +5661,7 @@ setSettingsTab("general");
 renderModalInstanceSyncToggle();
 renderIconTransformUi();
 setIconPreviewSource(null);
+renderDebugLogsVisibility();
 refreshAll();
 
 if (window.matchMedia) {
@@ -5488,4 +5678,6 @@ if (window.matchMedia) {
     media.addListener(rerenderThemeFromSystem);
   }
 }
+
+
 

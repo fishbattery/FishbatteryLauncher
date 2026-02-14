@@ -50,7 +50,28 @@ declare global {
         updatedAt: number | null;
         error: string | null;
       }>;
-      launcherAccountLogin: (email: string, password: string) => Promise<{
+      launcherAccountLogin: (
+        email: string,
+        password: string
+      ) => Promise<
+        | {
+            requiresTwoFactor: false;
+            state: {
+              configured: boolean;
+              signedIn: boolean;
+              activeAccountId: string | null;
+              activeAccount: any;
+              accounts: any[];
+              updatedAt: number | null;
+              error: string | null;
+            };
+          }
+        | {
+            requiresTwoFactor: true;
+            challengeToken: string;
+          }
+      >;
+      launcherAccountLogin2fa: (challengeToken: string, code: string) => Promise<{
         configured: boolean;
         signedIn: boolean;
         activeAccountId: string | null;

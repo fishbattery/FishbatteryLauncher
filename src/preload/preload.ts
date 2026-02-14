@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("launcherAccount:register", email, password, displayName),
   launcherAccountLogin: (email: string, password: string) =>
     ipcRenderer.invoke("launcherAccount:login", email, password),
+  launcherAccountLogin2fa: (challengeToken: string, code: string) =>
+    ipcRenderer.invoke("launcherAccount:login2fa", challengeToken, code),
   launcherAccountGoogleLogin: () => ipcRenderer.invoke("launcherAccount:googleLogin"),
   launcherAccountSwitch: (accountId: string) => ipcRenderer.invoke("launcherAccount:switch", accountId),
   launcherAccountLogout: () => ipcRenderer.invoke("launcherAccount:logout"),

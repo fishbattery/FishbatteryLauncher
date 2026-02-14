@@ -16,6 +16,7 @@ import {
   getLauncherAccountState,
   loginLauncherAccountWithGoogleDesktop,
   loginLauncherAccount,
+  loginLauncherAccountWithTwoFactor,
   openLauncherUpgradePage,
   logoutLauncherAccount,
   registerLauncherAccount,
@@ -536,6 +537,9 @@ export function registerIpc() {
   );
   ipcMain.handle("launcherAccount:login", async (_e, email: string, password: string) =>
     loginLauncherAccount(email, password)
+  );
+  ipcMain.handle("launcherAccount:login2fa", async (_e, challengeToken: string, code: string) =>
+    loginLauncherAccountWithTwoFactor(challengeToken, code)
   );
   ipcMain.handle("launcherAccount:googleLogin", async () => loginLauncherAccountWithGoogleDesktop());
   ipcMain.handle("launcherAccount:switch", async (_e, accountId: string) => switchLauncherAccount(accountId));
