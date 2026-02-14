@@ -2959,7 +2959,7 @@ async function openLauncherAuthDialog(mode: "login" | "register"): Promise<Launc
 
     const emailField = makeInput("Email", "email", "you@fishbattery.app");
     const passwordField = makeInput("Password", "password", "");
-    const displayNameField = makeInput("Display name", "text", "Fishbattery");
+    const displayNameField = makeInput("Username (unique)", "text", "Choose a unique username");
 
     panel.appendChild(title);
     panel.appendChild(emailField.wrap);
@@ -3014,7 +3014,7 @@ async function openLauncherAuthDialog(mode: "login" | "register"): Promise<Launc
         return;
       }
       if (mode === "register" && !displayName) {
-        alert("Display name is required.");
+        alert("Unique username is required.");
         return;
       }
       finish(mode === "register" ? { email, password, displayName } : { email, password });
@@ -3066,7 +3066,7 @@ async function openLauncherProfileDialog(current: {
       return { wrap, input };
     };
 
-    const displayNameField = makeInput("Display name", "text", "Fishbattery");
+    const displayNameField = makeInput("Username (unique)", "text", "Your unique username");
     const avatarField = makeInput("Profile picture", "text", "");
     displayNameField.input.value = String(current.displayName || "").trim();
     avatarField.input.readOnly = true;
@@ -3201,7 +3201,7 @@ async function openLauncherProfileDialog(current: {
     saveBtn.onclick = () => {
       const displayName = displayNameField.input.value.trim();
       if (!displayName) {
-        alert("Display name is required.");
+        alert("Unique username is required.");
         return;
       }
       finish({ displayName, avatarUrl: avatarValue });
