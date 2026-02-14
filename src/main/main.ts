@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import { registerIpc } from "./ipc";
 import { CANONICAL_FOLDER } from "./paths";
@@ -8,7 +9,23 @@ const userDataSuffix = String(process.env.FISHBATTERY_USERDATA_SUFFIX || "").tri
 const userDataFolder = userDataSuffix ? `${CANONICAL_FOLDER}-${userDataSuffix}` : CANONICAL_FOLDER;
 app.setPath("userData", path.join(app.getPath("appData"), userDataFolder));
 const localAppDataRoot = process.env.LOCALAPPDATA || app.getPath("appData");
-app.setPath("sessionData", path.join(localAppDataRoot, userDataFolder, "session"));
+
+function canWriteDir(dirPath: string): boolean {
+  try {
+    fs.mkdirSync(dirPath, { recursive: true });
+    const probe = path.join(dirPath, `.write-test-${process.pid}-${Date.now()}`);
+    fs.writeFileSync(probe, "ok", "utf8");
+    fs.unlinkSync(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const preferredSessionData = path.join(localAppDataRoot, userDataFolder, "session");
+const fallbackSessionData = path.join(app.getPath("temp"), userDataFolder, "session");
+const sessionDataPath = canWriteDir(preferredSessionData) ? preferredSessionData : fallbackSessionData;
+app.setPath("sessionData", sessionDataPath);
 
 const allowMultiInstance =
   String(process.env.FISHBATTERY_ALLOW_MULTI_INSTANCE || "").trim() === "1";
@@ -25,11 +42,16 @@ async function createWindow() {
   win = new BrowserWindow({
     width: 1200,
     height: 780,
+    backgroundColor: "#071525",
+    autoHideMenuBar: true,
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.cjs"),
       contextIsolation: true
     }
   });
+
+  win.setMenuBarVisibility(false);
 
   const devUrl =
     process.env.VITE_DEV_SERVER_URL ||
@@ -41,11 +63,23 @@ async function createWindow() {
     process.env.VITE_DEV_SERVER_URL ||
     process.env.ELECTRON_RENDERER_URL
   ) {
-    await win.loadURL(devUrl);
+    try {
+      await win.loadURL(devUrl);
+    } catch (err) {
+      const msg = String((err as any)?.message || err || "unknown error");
+      console.error(`[main] Failed to load dev URL ${devUrl}: ${msg}`);
+      await win.loadURL(`data:text/plain,Failed to load dev server at ${encodeURIComponent(devUrl)}. Start it with: npm run dev`);
+    }
     return;
   }
 
-  await win.loadFile(path.join(__dirname, "../renderer/index.html"));
+  try {
+    await win.loadFile(path.join(__dirname, "../renderer/index.html"));
+  } catch (err) {
+    const msg = String((err as any)?.message || err || "unknown error");
+    console.error(`[main] Failed to load renderer file: ${msg}`);
+    await win.loadURL("data:text/plain,Failed to load renderer index.html");
+  }
 }
 
 app.whenReady().then(async () => {

@@ -82,6 +82,51 @@ import {
 } from "./updater";
 
 export function registerIpc() {
+  ipcMain.handle("window:minimize", async (e) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner) return false;
+    owner.minimize();
+    return true;
+  });
+
+  ipcMain.handle("window:toggleMaximize", async (e) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner) return false;
+    if (owner.isMaximized()) owner.unmaximize();
+    else owner.maximize();
+    return owner.isMaximized();
+  });
+
+  ipcMain.handle("window:close", async (e) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner) return false;
+    owner.close();
+    return true;
+  });
+
+  ipcMain.handle("window:setTitleBarTheme", async (e, payload: { color?: string; symbolColor?: string }) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner) return false;
+    if (process.platform === "darwin") return false;
+
+    const color = String(payload?.color || "").trim();
+    const symbolColor = String(payload?.symbolColor || "").trim();
+    const hexRe = /^#([0-9a-fA-F]{6})$/;
+    if (!hexRe.test(color) || !hexRe.test(symbolColor)) return false;
+
+    try {
+      owner.setBackgroundColor(color);
+      owner.setTitleBarOverlay({
+        color,
+        symbolColor,
+        height: 34
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
   // ---------- Instances ----------
   ipcMain.handle("instances:list", async () => listInstances());
 

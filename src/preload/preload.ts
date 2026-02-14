@@ -6,6 +6,11 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron/rend
 
 contextBridge.exposeInMainWorld("api", {
   versionsList: () => ipcRenderer.invoke("versions:list"),
+  windowMinimize: () => ipcRenderer.invoke("window:minimize"),
+  windowToggleMaximize: () => ipcRenderer.invoke("window:toggleMaximize"),
+  windowClose: () => ipcRenderer.invoke("window:close"),
+  windowSetTitleBarTheme: (color: string, symbolColor: string) =>
+    ipcRenderer.invoke("window:setTitleBarTheme", { color, symbolColor }),
 
   accountsList: () => ipcRenderer.invoke("accounts:list"),
   accountsGetAvatar: (id: string, refresh?: boolean) => ipcRenderer.invoke("accounts:getAvatar", id, refresh),

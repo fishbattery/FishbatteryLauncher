@@ -4,6 +4,10 @@ declare global {
   interface Window {
     api: {
       versionsList: () => Promise<any>;
+      windowMinimize: () => Promise<boolean>;
+      windowToggleMaximize: () => Promise<boolean>;
+      windowClose: () => Promise<boolean>;
+      windowSetTitleBarTheme: (color: string, symbolColor: string) => Promise<boolean>;
 
       accountsList: () => Promise<any>;
       accountsGetAvatar: (id: string, refresh?: boolean) => Promise<string | null>;

@@ -12,6 +12,9 @@ const $ = (id: string) => document.getElementById(id) as HTMLElement;
 // --- Core UI refs (IDs must match index.html) ---
 const logsEl = $("logs") as HTMLPreElement;
 const statusText = $("statusText");
+const winBtnMin = $("winBtnMin") as HTMLButtonElement;
+const winBtnMax = $("winBtnMax") as HTMLButtonElement;
+const winBtnClose = $("winBtnClose") as HTMLButtonElement;
 
 const instancesGrid = $("instancesGrid") as HTMLDivElement;
 const searchInstances = $("searchInstances") as HTMLInputElement;
@@ -426,6 +429,30 @@ const THEME_BEHAVIOR_TEXT: Record<ThemeId, string> = {
   "minimal-bw": "Monochrome grayscale style focused on structure and clarity."
 };
 
+const THEME_DEFAULT_ACCENT: Record<Exclude<ThemeId, "system-default" | "time-of-day">, string> = {
+  ocean: "#3ddc84",
+  dark: "#57d2ff",
+  oled: "#6ef3b2",
+  "windows-xp": "#2f7fde",
+  "end-dimension": "#b983ff",
+  "nether-core": "#ff6b4d",
+  "ice-frost": "#87d6ff",
+  "prism-style": "#5ea3ff",
+  "creeper-mode": "#62e566",
+  "retro-2000s": "#7ac3ff",
+  "rgb-gamer": "#5b8bff",
+  "glass-modern-w11": "#C5E4F2",
+  "console-mode": "#6bd5ff",
+  "dynamic-accent": "#3ddc84",
+  "biome-plains": "#8bd16f",
+  "biome-desert": "#e6be72",
+  "biome-jungle": "#4fd184",
+  "biome-snow": "#98d5ff",
+  "biome-cherry-grove": "#f49cd0",
+  "developer-mode": "#8ad4ff",
+  "minimal-bw": "#d9d9d9"
+};
+
 const PREMIUM_THEMES = new Set<ThemeId>([
   "windows-xp",
   "end-dimension",
@@ -744,6 +771,33 @@ function getSystemAccentColor() {
   return "#50d1b8";
 }
 
+function cssColorToHex(input: string): string | null {
+  const raw = String(input || "").trim();
+  const hex6 = raw.match(/^#([0-9a-fA-F]{6})$/);
+  if (hex6) return `#${hex6[1].toLowerCase()}`;
+  const hex3 = raw.match(/^#([0-9a-fA-F]{3})$/);
+  if (hex3) {
+    const h = hex3[1];
+    return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`.toLowerCase();
+  }
+
+  const rgb = raw.match(/^rgba?\(\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})/i);
+  if (!rgb) return null;
+  const nums = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])].map((n) => Math.max(0, Math.min(255, n)));
+  return `#${nums.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function idealSymbolColor(bgHex: string): string {
+  const m = String(bgHex || "").trim().match(/^#([0-9a-fA-F]{6})$/);
+  if (!m) return "#d9ebfb";
+  const hex = m[1];
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? "#101820" : "#d9ebfb";
+}
+
 function resolveEffectiveTheme(theme: ThemeId): Exclude<ThemeId, "system-default" | "time-of-day"> {
   if (theme === "system-default") {
     const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -758,6 +812,12 @@ function resolveEffectiveTheme(theme: ThemeId): Exclude<ThemeId, "system-default
     return "oled";
   }
   return theme;
+}
+
+function defaultAccentForTheme(theme: ThemeId): string {
+  if (theme === "system-default") return getSystemAccentColor();
+  const effective = resolveEffectiveTheme(theme);
+  return THEME_DEFAULT_ACCENT[effective] || "#3ddc84";
 }
 
 function applySettingsToDom(s: AppSettings) {
@@ -1536,7 +1596,7 @@ function renderSettingsPanels() {
         sel.value = s.theme;
         return;
       }
-      setSettings({ theme: next });
+      setSettings({ theme: next, accentColor: defaultAccentForTheme(next) });
       renderSettingsPanels();
     };
     row.appendChild(sel);
@@ -4083,6 +4143,18 @@ async function refreshAll() {
       }
     });
   }
+
+  const syncTitleBar = () => {
+    const computed = getComputedStyle(document.documentElement);
+    const bgRaw = computed.getPropertyValue("--bg");
+    const bgHex = cssColorToHex(bgRaw) || "#071525";
+    const symbols = idealSymbolColor(bgHex);
+    void window.api.windowSetTitleBarTheme(bgHex, symbols);
+  };
+
+  syncTitleBar();
+  // Re-sync after style recalculation so native caption area always matches active theme.
+  requestAnimationFrame(syncTitleBar);
 }
 
 // ---------------- Event wiring ----------------
@@ -5033,6 +5105,19 @@ document.addEventListener("click", (e) => {
   if (accountBtn.contains(t)) return;
   accountDropdown.classList.remove("open");
 });
+
+winBtnMin.onclick = () => {
+  void window.api.windowMinimize();
+};
+
+winBtnMax.onclick = async () => {
+  const maximized = await window.api.windowToggleMaximize();
+  winBtnMax.classList.toggle("is-maximized", !!maximized);
+};
+
+winBtnClose.onclick = () => {
+  void window.api.windowClose();
+};
 
 // Initial
 applySettingsToDom(getSettings());

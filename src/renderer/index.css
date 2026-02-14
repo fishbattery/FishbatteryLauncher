@@ -41,11 +41,138 @@ body{
   font-family: var(--font-ui);
 }
 
+.windowTopbar{
+  height: 34px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(to bottom, rgba(255,255,255,.05), rgba(255,255,255,.01));
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.windowTopbarLeft{
+  justify-self: start;
+  -webkit-app-region: no-drag;
+}
+
+.windowTopbarCenter{
+  justify-self: center;
+  -webkit-app-region: no-drag;
+}
+
+.windowTopbarRight{
+  justify-self: end;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  -webkit-app-region: no-drag;
+}
+
+.windowTopbarBrand{
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  opacity: .92;
+}
+
+.windowTopbarPill{
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: rgba(255,255,255,.03);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.windowTopbarBtn{
+  width: 46px;
+  height: 34px;
+  border: 0;
+  border-left: 1px solid rgba(255,255,255,.03);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  position: relative;
+}
+
+.windowTopbarBtn:hover{
+  background: rgba(255,255,255,.08);
+}
+
+.windowTopbarBtnClose:hover{
+  background: rgba(255,93,108,.25);
+  color: #fff4f6;
+}
+
+.windowTopbarBtn::before,
+.windowTopbarBtn::after{
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: currentColor;
+  opacity: .95;
+}
+
+.windowTopbarBtnMin::before{
+  width: 11px;
+  height: 1.3px;
+  top: 58%;
+}
+
+.windowTopbarBtnMax::before{
+  width: 10px;
+  height: 8px;
+  background: transparent;
+  border: 1.3px solid currentColor;
+}
+
+.windowTopbarBtnMax.is-maximized::before{
+  width: 8px;
+  height: 6px;
+  background: transparent;
+  border: 1.3px solid currentColor;
+  transform: translate(-35%, -35%);
+}
+
+.windowTopbarBtnMax.is-maximized::after{
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 6px;
+  background: transparent;
+  border: 1.3px solid currentColor;
+  transform: translate(-62%, -12%);
+}
+
+.windowTopbarBtnClose::before{
+  width: 12px;
+  height: 1.3px;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.windowTopbarBtnClose::after{
+  width: 12px;
+  height: 1.3px;
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
 /* Layout */
 .app{
   display: grid;
   grid-template-columns: 270px 1fr;
-  height: 100vh;
+  height: calc(100vh - 34px);
 }
 
 .sidebar{
