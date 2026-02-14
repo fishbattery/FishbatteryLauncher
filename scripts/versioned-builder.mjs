@@ -12,9 +12,10 @@ const version = String(pkg.version || "dev").trim() || "dev";
 const outputDir = `release/v${version}`;
 
 const builderArgs = process.argv.slice(2);
-const cmd = process.platform === "win32" ? "npx.cmd" : "npx";
+const cmd = process.execPath;
+const builderCli = path.join(rootDir, "node_modules", "electron-builder", "cli.js");
 const args = [
-  "electron-builder",
+  builderCli,
   `--config.directories.output=${outputDir}`,
   ...builderArgs
 ];
@@ -28,4 +29,3 @@ const child = spawn(cmd, args, {
 child.on("exit", (code) => {
   process.exit(code ?? 1);
 });
-
