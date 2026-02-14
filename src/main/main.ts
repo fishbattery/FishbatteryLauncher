@@ -42,9 +42,11 @@ async function createWindow() {
   win = new BrowserWindow({
     width: 1200,
     height: 780,
-    backgroundColor: "#071525",
+    backgroundColor: "#00000000",
     autoHideMenuBar: true,
     frame: false,
+    transparent: true,
+    hasShadow: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.cjs"),
       contextIsolation: true

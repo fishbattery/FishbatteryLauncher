@@ -1,7 +1,7 @@
 {
   "name": "fishbattery-launcher",
   "productName": "fishbattery-launcher",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Fishbattery launcher is an underwater-themed Fabric launcher with isolated instances and Modrinth mods.",
   "author": "Fishbattery",
@@ -13,6 +13,9 @@
     "start": "electron-vite preview",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win nsis",
+    "dist:mac": "npm run build && electron-builder --mac dmg zip",
+    "dist:linux": "npm run build && electron-builder --linux AppImage deb",
     "qa:preflight": "npm run build"
   },
   "dependencies": {
@@ -38,7 +41,7 @@
   },
   "build": {
     "appId": "com.fishbattery.launcher",
-    "artifactName": "${productName}-${version}.${ext}",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -60,6 +63,20 @@
         "nsis"
       ],
       "requestedExecutionLevel": "asInvoker"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.games"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Game"
     },
     "publish": [
       {
