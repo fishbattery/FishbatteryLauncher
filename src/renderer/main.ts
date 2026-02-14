@@ -22,6 +22,12 @@ const searchInstances = $("searchInstances") as HTMLInputElement;
 
 const navLibrary = $("navLibrary");
 const navSettings = $("navSettings");
+const sidebarSponsored = $("sidebarSponsored");
+const sidebarSponsoredTitle = $("sidebarSponsoredTitle");
+const sidebarSponsoredBody = $("sidebarSponsoredBody");
+const sidebarSponsoredMediaText = $("sidebarSponsoredMediaText");
+const sidebarSponsoredCta = $("sidebarSponsoredCta") as HTMLButtonElement;
+const sidebarSponsoredUpgrade = $("sidebarSponsoredUpgrade") as HTMLButtonElement;
 
 const viewLibrary = $("viewLibrary");
 const viewSettings = $("viewSettings");
@@ -235,6 +241,50 @@ let iconPreviewNaturalH = 0;
 let iconPreviewDragMaxShiftX = 0;
 let iconPreviewDragMaxShiftY = 0;
 let modalInstanceSyncEnabled = true;
+let sponsoredIndex = 0;
+let sponsoredBanners: Array<{
+  title: string;
+  body: string;
+  cta: string;
+  media: string;
+  link: string;
+}> = [
+  {
+    title: "Sponsored: Modpack Hosting",
+    body: "Deploy modded servers quickly with one-click backups and version pinning.",
+    cta: "See hosting tips",
+    media: "Hosting",
+    link: "https://fishbatteryapp.github.io/fishbattery-web/download.html"
+  },
+  {
+    title: "Sponsored: Resource Pack Studio",
+    body: "Build and preview texture packs with a streamlined desktop workflow.",
+    cta: "View workflow",
+    media: "Studio",
+    link: "https://fishbatteryapp.github.io/fishbattery-web/"
+  },
+  {
+    title: "Sponsored: Community Worlds",
+    body: "Discover curated adventure maps tested for current launcher presets.",
+    cta: "Browse highlights",
+    media: "Worlds",
+    link: "https://fishbatteryapp.github.io/fishbattery-web/download.html"
+  }
+];
+let sponsoredCurrentLink = sponsoredBanners[0].link;
+
+type SponsoredFeedAd = {
+  id?: string;
+  active?: boolean;
+  placements?: string[];
+  title?: string;
+  body?: string;
+  cta?: string;
+  media?: string;
+  link?: string;
+};
+
+const SPONSORED_FEED_URLS = ["https://fishbatteryapp.github.io/fishbattery-web/assets/ads.json"];
 
 function getSelectedIconTransformPayload() {
   return {
@@ -966,11 +1016,88 @@ async function maybeOfferRollback(instanceId: string, diag: any | null) {
 async function guarded(fn: () => Promise<void>) {
   if (busy) return;
   busy = true;
+  void renderSponsoredBannerState();
   try {
     await fn();
   } finally {
     busy = false;
+    void renderSponsoredBannerState();
   }
+}
+
+function hasAdsFreeSubscription(): boolean {
+  if (hasPremium()) return true;
+  return !!state.launcherSubscription?.features?.adsFree;
+}
+
+async function shouldHideSponsoredBanner() {
+  if (hasAdsFreeSubscription()) return true;
+  if (busy) return true;
+  if (latestDiagnosis?.severity === "critical") return true;
+  const active = state.instances?.activeInstanceId ?? null;
+  if (!active) return false;
+  try {
+    return !!(await window.api.launchIsRunning(active));
+  } catch {
+    return false;
+  }
+}
+
+async function loadSponsoredBannersFromFeed() {
+  const fallback = sponsoredBanners;
+  for (const url of SPONSORED_FEED_URLS) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(url, {
+        signal: controller.signal,
+        cache: "no-store"
+      });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const json = await res.json();
+      const ads: SponsoredFeedAd[] = Array.isArray(json?.ads) ? json.ads : [];
+      const launcherAds = ads.filter((ad) => {
+        if (ad?.active === false) return false;
+        if (!Array.isArray(ad?.placements)) return false;
+        return ad.placements.includes("launcher-sidebar");
+      });
+      const mapped = launcherAds
+        .map((ad) => ({
+          title: String(ad.title || "").trim(),
+          body: String(ad.body || "").trim(),
+          cta: String(ad.cta || "Learn more").trim(),
+          media: String(ad.media || "Sponsor").trim(),
+          link: String(ad.link || "").trim()
+        }))
+        .filter((ad) => ad.title && ad.body && ad.link && /^https?:\/\//i.test(ad.link));
+      if (mapped.length) {
+        sponsoredBanners = mapped;
+        if (!mapped.some((x) => x.link === sponsoredCurrentLink)) {
+          sponsoredCurrentLink = mapped[0].link;
+        }
+        return;
+      }
+    } catch {
+      // continue to fallback
+    }
+  }
+  sponsoredBanners = fallback;
+}
+
+async function renderSponsoredBannerState() {
+  if (!sidebarSponsored) return;
+  const hide = await shouldHideSponsoredBanner();
+  sidebarSponsored.style.display = hide ? "none" : "";
+  if (hide) return;
+
+  const entry = sponsoredBanners[sponsoredIndex % sponsoredBanners.length];
+  sponsoredIndex += 1;
+  sidebarSponsoredTitle.textContent = entry.title;
+  sidebarSponsoredBody.textContent = entry.body;
+  sidebarSponsoredMediaText.textContent = entry.media;
+  sidebarSponsoredCta.textContent = entry.cta;
+  sponsoredCurrentLink = entry.link;
 }
 
 function setView(which: "library" | "settings") {
@@ -2907,11 +3034,18 @@ async function refreshLauncherSubscription() {
   }
 }
 
-type LauncherAuthFormResult = {
-  email: string;
-  password: string;
-  displayName?: string;
-} | null;
+type LauncherAuthFormResult =
+  | {
+      action: "credentials";
+      mode: "login" | "register";
+      email: string;
+      password: string;
+      displayName?: string;
+    }
+  | {
+      action: "google";
+    }
+  | null;
 
 type LauncherProfileFormResult = {
   displayName: string;
@@ -2929,15 +3063,21 @@ async function openLauncherAuthDialog(mode: "login" | "register"): Promise<Launc
     backdrop.style.zIndex = "99999";
 
     const panel = document.createElement("div");
-    panel.style.width = "min(440px, calc(100vw - 24px))";
+    panel.style.width = "min(520px, calc(100vw - 24px))";
     panel.style.padding = "14px";
     panel.style.borderRadius = "14px";
     panel.style.border = "1px solid var(--line)";
     panel.style.background = "var(--panel)";
     panel.style.boxShadow = "0 16px 50px rgba(0,0,0,.45)";
 
+    const kicker = document.createElement("p");
+    kicker.textContent = "FISHBATTERY ACCOUNT";
+    kicker.style.margin = "0 0 4px";
+    kicker.style.fontSize = "12px";
+    kicker.style.letterSpacing = "1px";
+    kicker.style.color = "var(--accent)";
+
     const title = document.createElement("h3");
-    title.textContent = mode === "register" ? "Create Fishbattery Account" : "Sign In to Fishbattery";
     title.style.margin = "0 0 10px";
 
     const makeInput = (labelText: string, type = "text", placeholder = "") => {
@@ -2957,33 +3097,109 @@ async function openLauncherAuthDialog(mode: "login" | "register"): Promise<Launc
       return { wrap, input };
     };
 
-    const emailField = makeInput("Email", "email", "you@fishbattery.app");
-    const passwordField = makeInput("Password", "password", "");
-    const displayNameField = makeInput("Username (unique)", "text", "Choose a unique username");
+    const modeRow = document.createElement("div");
+    modeRow.style.display = "flex";
+    modeRow.style.gap = "8px";
+    modeRow.style.margin = "0 0 12px";
 
+    const loginModeBtn = document.createElement("button");
+    loginModeBtn.type = "button";
+    loginModeBtn.className = "btn";
+    loginModeBtn.textContent = "Sign in";
+
+    const registerModeBtn = document.createElement("button");
+    registerModeBtn.type = "button";
+    registerModeBtn.className = "btn";
+    registerModeBtn.textContent = "Create account";
+    modeRow.append(loginModeBtn, registerModeBtn);
+
+    const providerTitle = document.createElement("h4");
+    providerTitle.textContent = "Continue with";
+    providerTitle.style.margin = "0 0 8px";
+    providerTitle.style.fontSize = "22px";
+
+    const providerGrid = document.createElement("div");
+    providerGrid.style.display = "grid";
+    providerGrid.style.gridTemplateColumns = "repeat(2, minmax(0, 1fr))";
+    providerGrid.style.gap = "8px";
+    providerGrid.style.marginBottom = "10px";
+
+    const makeProviderBtn = (label: string, enabled = false) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = label;
+      btn.style.width = "100%";
+      if (!enabled) {
+        btn.disabled = true;
+        btn.style.opacity = "0.6";
+        btn.style.cursor = "not-allowed";
+      }
+      return btn;
+    };
+
+    providerGrid.append(
+      makeProviderBtn("Discord"),
+      makeProviderBtn("GitHub"),
+      makeProviderBtn("Microsoft"),
+      makeProviderBtn("Google", true),
+      makeProviderBtn("Steam"),
+      makeProviderBtn("GitLab")
+    );
+
+    const passwordSubtitle = document.createElement("h4");
+    passwordSubtitle.style.margin = "0 0 8px";
+    passwordSubtitle.style.fontSize = "22px";
+
+    const emailField = makeInput("Email", "email", "you@example.com");
+    const displayNameField = makeInput("Username (unique)", "text", "Choose a unique username");
+    displayNameField.input.maxLength = 32;
+    const passwordField = makeInput("Password", "password", "Password");
+    const confirmPasswordField = makeInput("Confirm password", "password", "Confirm password");
+
+    const statusText = document.createElement("p");
+    statusText.className = "muted";
+    statusText.style.margin = "6px 0 0";
+    statusText.style.fontSize = "13px";
+
+    panel.appendChild(kicker);
     panel.appendChild(title);
+    panel.appendChild(modeRow);
+    panel.appendChild(providerTitle);
+    panel.appendChild(providerGrid);
+    panel.appendChild(passwordSubtitle);
     panel.appendChild(emailField.wrap);
+    panel.appendChild(displayNameField.wrap);
     panel.appendChild(passwordField.wrap);
-    if (mode === "register") panel.appendChild(displayNameField.wrap);
+    panel.appendChild(confirmPasswordField.wrap);
 
     const actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.justifyContent = "flex-end";
+    actions.style.justifyContent = "space-between";
+    actions.style.alignItems = "center";
     actions.style.gap = "8px";
     actions.style.marginTop = "4px";
 
+    const leftActions = document.createElement("div");
+    leftActions.style.display = "flex";
+    leftActions.style.gap = "8px";
+
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "btn";
-    cancelBtn.textContent = "Cancel";
+    cancelBtn.textContent = "Back";
 
     const submitBtn = document.createElement("button");
     submitBtn.className = "btn ok";
-    submitBtn.textContent = mode === "register" ? "Create account" : "Sign in";
+    submitBtn.textContent = "Sign in";
 
-    actions.append(cancelBtn, submitBtn);
+    leftActions.append(cancelBtn, submitBtn);
+    actions.append(leftActions);
     panel.appendChild(actions);
+    panel.appendChild(statusText);
     backdrop.appendChild(panel);
     document.body.appendChild(backdrop);
+
+    let currentMode: "login" | "register" = mode;
 
     const cleanup = () => {
       backdrop.remove();
@@ -3000,27 +3216,79 @@ async function openLauncherAuthDialog(mode: "login" | "register"): Promise<Launc
     };
     document.addEventListener("keydown", onEsc);
 
+    const setStatus = (text: string) => {
+      statusText.textContent = text;
+    };
+
+    const setMode = (nextMode: "login" | "register") => {
+      currentMode = nextMode;
+      const isRegister = currentMode === "register";
+      title.textContent = isRegister ? "Create account" : "Sign in";
+      passwordSubtitle.textContent = isRegister ? "Or create an account yourself" : "Or use a password";
+      submitBtn.textContent = isRegister ? "Create account" : "Sign in";
+      loginModeBtn.className = isRegister ? "btn" : "btn ok";
+      registerModeBtn.className = isRegister ? "btn ok" : "btn";
+      displayNameField.wrap.style.display = isRegister ? "grid" : "none";
+      confirmPasswordField.wrap.style.display = isRegister ? "grid" : "none";
+      setStatus(isRegister ? "Create your account to get started." : "Sign in with your account.");
+    };
+
     backdrop.addEventListener("click", (ev) => {
       if (ev.target === backdrop) finish(null);
     });
 
+    loginModeBtn.onclick = () => setMode("login");
+    registerModeBtn.onclick = () => setMode("register");
+
+    const googleBtn = Array.from(providerGrid.querySelectorAll("button")).find((b) => b.textContent === "Google");
+    if (googleBtn) {
+      googleBtn.onclick = () => finish({ action: "google" });
+    }
+
     cancelBtn.onclick = () => finish(null);
-    submitBtn.onclick = () => {
+    const submitAuth = () => {
       const email = emailField.input.value.trim();
       const password = passwordField.input.value;
       const displayName = displayNameField.input.value.trim();
       if (!email || !password) {
-        alert("Email and password are required.");
+        setStatus("Please enter your email and password.");
         return;
       }
-      if (mode === "register" && !displayName) {
-        alert("Unique username is required.");
+      if (currentMode === "register" && !displayName) {
+        setStatus("Please choose a unique username.");
         return;
       }
-      finish(mode === "register" ? { email, password, displayName } : { email, password });
+      if (currentMode === "register" && password !== confirmPasswordField.input.value) {
+        setStatus("Passwords do not match.");
+        return;
+      }
+      finish(
+        currentMode === "register"
+          ? { action: "credentials", mode: "register", email, password, displayName }
+          : { action: "credentials", mode: "login", email, password }
+      );
     };
+    submitBtn.onclick = submitAuth;
 
-    emailField.input.focus();
+    passwordField.input.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter") return;
+      if (currentMode !== "login") return;
+      ev.preventDefault();
+      submitAuth();
+    });
+    confirmPasswordField.input.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter") return;
+      if (currentMode !== "register") return;
+      ev.preventDefault();
+      submitAuth();
+    });
+
+    setMode(mode);
+    if (mode === "register") {
+      displayNameField.input.focus();
+    } else {
+      emailField.input.focus();
+    };
   });
 }
 
@@ -3381,47 +3649,29 @@ async function renderAccounts() {
   const btnLauncherSignIn = document.createElement("button");
   btnLauncherSignIn.className = "btn";
   btnLauncherSignIn.textContent = "Sign in";
-  btnLauncherSignIn.onclick = () => {
+  const openLauncherAuthFlow = (initialMode: "login" | "register") => {
     void runLauncherAccountAction(async () => {
-      const values = await openLauncherAuthDialog("login");
+      const values = await openLauncherAuthDialog(initialMode);
       if (!values) return;
-      state.launcherAccount = await window.api.launcherAccountLogin(values.email, values.password);
+      if (values.action === "google") {
+        alert("A browser window will open for Google sign-in. Complete it, then return to the launcher.");
+        state.launcherAccount = await window.api.launcherAccountGoogleLogin();
+      } else if (values.mode === "register") {
+        state.launcherAccount = await window.api.launcherAccountRegister(values.email, values.password, values.displayName);
+      } else {
+        state.launcherAccount = await window.api.launcherAccountLogin(values.email, values.password);
+      }
       await refreshLauncherSubscription();
       await renderAccounts();
       accountDropdown.classList.remove("open");
     });
   };
+  btnLauncherSignIn.onclick = () => openLauncherAuthFlow("login");
 
   const btnLauncherRegister = document.createElement("button");
   btnLauncherRegister.className = "btn";
   btnLauncherRegister.textContent = "Create account";
-  btnLauncherRegister.onclick = () => {
-    void runLauncherAccountAction(async () => {
-      const values = await openLauncherAuthDialog("register");
-      if (!values) return;
-      state.launcherAccount = await window.api.launcherAccountRegister(
-        values.email,
-        values.password,
-        values.displayName
-      );
-      await refreshLauncherSubscription();
-      await renderAccounts();
-      accountDropdown.classList.remove("open");
-    });
-  };
-
-  const btnLauncherGoogle = document.createElement("button");
-  btnLauncherGoogle.className = "btn";
-  btnLauncherGoogle.textContent = "Continue with Google";
-  btnLauncherGoogle.onclick = () => {
-    void runLauncherAccountAction(async () => {
-      alert("A browser window will open for Google sign-in. Complete it, then return to the launcher.");
-      state.launcherAccount = await window.api.launcherAccountGoogleLogin();
-      await refreshLauncherSubscription();
-      await renderAccounts();
-      accountDropdown.classList.remove("open");
-    });
-  };
+  btnLauncherRegister.onclick = () => openLauncherAuthFlow("register");
 
   const btnLauncherLogout = document.createElement("button");
   btnLauncherLogout.className = "btn";
@@ -3474,7 +3724,6 @@ async function renderAccounts() {
   } else if (!launcherActive) {
     launcherActionRow.appendChild(btnLauncherSignIn);
     launcherActionRow.appendChild(btnLauncherRegister);
-    launcherActionRow.appendChild(btnLauncherGoogle);
     accountItems.appendChild(launcherActionRow);
   } else {
     launcherActionRow.appendChild(btnLauncherSettings);
@@ -3565,6 +3814,7 @@ async function renderAccounts() {
       if (updated) await renderAccounts();
     })();
   }
+  void renderSponsoredBannerState();
   ensureCloudSyncTimer();
 }
 // ---------------- Instances (card layout) ----------------
@@ -4113,6 +4363,8 @@ async function refreshAll() {
 
   await renderAccounts();
   await renderInstances();
+  await loadSponsoredBannersFromFeed();
+  await renderSponsoredBannerState();
   ensureCloudSyncTimer();
   setStatus("");
 
@@ -4157,6 +4409,31 @@ async function refreshAll() {
   // Re-sync after style recalculation so native caption area always matches active theme.
   requestAnimationFrame(syncTitleBar);
 }
+
+sidebarSponsoredCta.onclick = () => {
+  const target = String(sponsoredCurrentLink || "").trim();
+  if (!target) return;
+  void guarded(async () => {
+    const ok = await window.api.externalOpen(target);
+    if (!ok) {
+      setStatus("Could not open sponsor link right now.");
+      return;
+    }
+    appendLog(`[sponsored] Opened: ${target}`);
+  });
+};
+
+sidebarSponsoredUpgrade.onclick = () => {
+  const upgradeUrl = "https://fishbatteryapp.github.io/fishbattery-web/upgrade.html";
+  void guarded(async () => {
+    const ok = await window.api.externalOpen(upgradeUrl);
+    if (!ok) {
+      setStatus("Could not open upgrade page right now.");
+      return;
+    }
+    appendLog(`[sponsored] Opened upgrade page: ${upgradeUrl}`);
+  });
+};
 
 // ---------------- Event wiring ----------------
 navLibrary.onclick = () => setView("library");

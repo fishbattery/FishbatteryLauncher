@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("api", {
   windowDragEnd: (cursorY: number) => ipcRenderer.invoke("window:dragEnd", { cursorY }),
   windowToggleFullscreen: () => ipcRenderer.invoke("window:toggleFullscreen"),
   windowClose: () => ipcRenderer.invoke("window:close"),
+  externalOpen: (url: string) => ipcRenderer.invoke("external:open", url),
   windowSetTitleBarTheme: (color: string, symbolColor: string) =>
     ipcRenderer.invoke("window:setTitleBarTheme", { color, symbolColor }),
 

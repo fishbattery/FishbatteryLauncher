@@ -170,6 +170,13 @@ export function registerIpc() {
     return true;
   });
 
+  ipcMain.handle("external:open", async (_e, url: string) => {
+    const target = String(url || "").trim();
+    if (!/^https?:\/\//i.test(target)) return false;
+    const err = await shell.openExternal(target);
+    return !err;
+  });
+
   ipcMain.handle("window:setTitleBarTheme", async (e, payload: { color?: string; symbolColor?: string }) => {
     const owner = BrowserWindow.fromWebContents(e.sender);
     if (!owner) return false;

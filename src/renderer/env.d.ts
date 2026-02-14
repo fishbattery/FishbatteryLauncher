@@ -12,6 +12,7 @@ declare global {
       windowDragEnd: (cursorY: number) => Promise<boolean>;
       windowToggleFullscreen: () => Promise<boolean>;
       windowClose: () => Promise<boolean>;
+      externalOpen: (url: string) => Promise<boolean>;
       windowSetTitleBarTheme: (color: string, symbolColor: string) => Promise<boolean>;
 
       accountsList: () => Promise<any>;
