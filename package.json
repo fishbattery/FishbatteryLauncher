@@ -11,11 +11,12 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win nsis",
-    "dist:mac": "npm run build && electron-builder --mac dmg zip",
-    "dist:linux": "npm run build && electron-builder --linux AppImage deb",
+    "pack": "npm run build && node ./scripts/versioned-builder.mjs --dir",
+    "dist": "npm run build && node ./scripts/versioned-builder.mjs",
+    "dist:win": "npm run build && node ./scripts/versioned-builder.mjs --win nsis",
+    "dist:mac": "npm run build && node ./scripts/versioned-builder.mjs --mac dmg zip",
+    "dist:linux": "npm run build && node ./scripts/versioned-builder.mjs --linux AppImage deb",
+    "release:organize": "node ./scripts/organize-release.mjs",
     "qa:preflight": "npm run build"
   },
   "dependencies": {
