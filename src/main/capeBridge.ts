@@ -94,11 +94,19 @@ async function fetchGithubJson<T>(url: string): Promise<T> {
 }
 
 function getTagModVersion(tag: string, mcVersion: string, loader: GitHubBridgeLoader): string | null {
-  const prefix = `v${mcVersion}-`;
   const suffix = `-${loader}`;
-  if (!tag.startsWith(prefix) || !tag.endsWith(suffix)) return null;
-  const middle = tag.slice(prefix.length, tag.length - suffix.length).trim();
-  return middle || null;
+  if (!tag.startsWith("v") || !tag.endsWith(suffix)) return null;
+  const middle = tag.slice(1, tag.length - suffix.length).trim();
+  if (!middle) return null;
+
+  // New layout: v<modVersion>-<loader>
+  // Legacy layout: v<mcVersion>-<modVersion>-<loader>
+  const legacyPrefix = `${mcVersion}-`;
+  if (middle.startsWith(legacyPrefix)) {
+    const legacyModVersion = middle.slice(legacyPrefix.length).trim();
+    return legacyModVersion || null;
+  }
+  return middle;
 }
 
 function chooseBridgeAsset(
