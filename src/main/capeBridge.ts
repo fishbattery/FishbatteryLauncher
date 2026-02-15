@@ -61,6 +61,23 @@ function listInstalledBridgeJars(modsDir: string): string[] {
     .map((entry) => path.join(modsDir, entry));
 }
 
+function isTargetedBridgeJarForInstance(filePath: string, mcVersion: string, loader: GitHubBridgeLoader): boolean {
+  const name = path.basename(filePath).toLowerCase();
+  const expectedSuffix = `-${String(mcVersion).toLowerCase()}-${loader}.jar`;
+  return name.startsWith(BRIDGE_PREFIX) && name.endsWith(expectedSuffix);
+}
+
+function pickCompatibleInstalledBridgeJar(
+  files: string[],
+  mcVersion: string,
+  loader: GitHubBridgeLoader
+): string | null {
+  for (const file of files) {
+    if (isTargetedBridgeJarForInstance(file, mcVersion, loader)) return file;
+  }
+  return null;
+}
+
 function sha1File(filePath: string): string | null {
   try {
     if (!fs.existsSync(filePath) || !fs.statSync(filePath).size) return null;
@@ -120,7 +137,7 @@ function chooseBridgeAsset(
       (a) => a?.name?.startsWith(BRIDGE_PREFIX) && a.name.toLowerCase().endsWith(suffix.toLowerCase())
     ) ?? null;
   if (preferred) return preferred;
-  return release.assets.find((a) => a?.name?.toLowerCase().endsWith(".jar")) ?? null;
+  return null;
 }
 
 async function resolveGithubBridgeRelease(
@@ -223,9 +240,14 @@ export async function syncCapeBridgeModWithGithub(instance: InstanceConfig, onLo
     // For Fabric/Quilt, avoid falling back to a generic bundled jar that may target another MC version.
     if (!source) {
       const existing = listInstalledBridgeJars(modsDir);
-      if (existing.length) {
-        onLog?.(`[capes] Keeping existing bridge jar: ${path.basename(existing[0])}`);
+      const compatible = pickCompatibleInstalledBridgeJar(existing, instance.mcVersion, instance.loader);
+      if (compatible) {
+        onLog?.(`[capes] Keeping existing compatible bridge jar: ${path.basename(compatible)}`);
         return;
+      }
+      if (existing.length) {
+        cleanBridgeJars(modsDir);
+        onLog?.("[capes] Removed incompatible bridge jar(s) for this instance version.");
       }
       onLog?.(
         `[capes] Skipping bridge injection for ${instance.loader} ${instance.mcVersion}: no matching GitHub bridge release found.`
@@ -239,10 +261,15 @@ export async function syncCapeBridgeModWithGithub(instance: InstanceConfig, onLo
 
   if (!source) {
     const existing = listInstalledBridgeJars(modsDir);
-    if (existing.length) {
-      onLog?.(`[capes] Keeping existing bridge jar: ${path.basename(existing[0])}`);
+    const compatible =
+      instance.loader === "fabric" || instance.loader === "quilt"
+        ? pickCompatibleInstalledBridgeJar(existing, instance.mcVersion, instance.loader)
+        : existing[0] || null;
+    if (compatible) {
+      onLog?.(`[capes] Keeping existing bridge jar: ${path.basename(compatible)}`);
       return;
     }
+    if (existing.length) cleanBridgeJars(modsDir);
     onLog?.(
       `[capes] Cape bridge jar missing for ${instance.loader}. No GitHub release and no bundled fallback ${expectedBundledJarName(instance.loader)}`
     );
