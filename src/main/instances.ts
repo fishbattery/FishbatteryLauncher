@@ -87,6 +87,22 @@ export function createInstance(cfg: Omit<InstanceConfig, "createdAt">) {
   db.updatedAt = Date.now();
   saveDb(db);
   getInstanceDir(full.id);
+  // Ensure instance directory structure and attempt to pre-install bridge mod.
+  try {
+    const instDir = getInstanceDir(full.id);
+    const modsDir = path.join(instDir, "mods");
+    fs.mkdirSync(modsDir, { recursive: true });
+    // Attempt to install bridge for this instance (best-effort, no logging available here).
+    // Import dynamically to avoid circular imports at module load time.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const installer = require("./bridgeInstaller") as typeof import("./bridgeInstaller");
+      void installer.installBridgeToMods(modsDir, full.mcVersion, full.loader).catch(() => {});
+    } catch {
+      // ignore
+    }
+  } catch {}
+
   return full;
 }
 

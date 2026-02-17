@@ -12,8 +12,7 @@ import crypto from "node:crypto";
 import { getDataRoot, getAssetsRoot, getLibrariesRoot, getVersionsRoot } from "./paths";
 import { autoInstallMissingDependenciesForInstance } from "./dependencyAutoInstall";
 import { getSelectedLocalCapeForAccount } from "./capes";
-import https from "node:https";
-import { pipeline } from "node:stream/promises";
+import { installBridgeToMods } from "./bridgeInstaller";
 
 const running = new Map<string, any>(); // instanceId -> child process
 const launching = new Set<string>(); // instanceId currently in launcher bootstrap
@@ -447,6 +446,54 @@ async function launchResolved(
           fs.copyFileSync(selectedCape.fullPath, dest);
           customJavaArgs.push(`-Dfishbattery.cape.path=${dest}`);
           onLog?.(`[capes] Injected launcher cape: ${dest}`);
+
+          // If this is a premium/founder cape, attempt to attach a signature.
+          try {
+            const tier = String(selectedCape.tier || "").toLowerCase();
+            if (tier === "premium" || tier === "founder") {
+              // Look for a sidecar .sig file next to the cached cape
+              const sigCandidates = [selectedCape.fullPath + ".sig", selectedCape.fullPath + ".sig.b64", dest + ".sig", dest + ".sig.b64"];
+              let sigB64: string | null = null;
+              for (const s of sigCandidates) {
+                try {
+                  if (fs.existsSync(s)) {
+                    const raw = fs.readFileSync(s);
+                    const txt = String(raw || "").trim();
+                    // If file is raw binary signature, base64-encode it
+                    if (/^[A-Za-z0-9+/=\s]+$/.test(txt) && txt.length > 0 && txt.length < 8192) {
+                      // treat as base64 text
+                      sigB64 = txt.replace(/\s+/g, "");
+                    } else {
+                      sigB64 = Buffer.from(raw).toString("base64");
+                    }
+                    break;
+                  }
+                } catch {}
+              }
+
+              // If no sidecar, try to fetch remote signature by appending .sig to downloadUrl
+              if (!sigB64 && selectedCape.downloadUrl) {
+                try {
+                  const sigUrl = selectedCape.downloadUrl + ".sig";
+                  const resp = await fetch(sigUrl, { headers: { "User-Agent": "FishbatteryLauncher/1.0" } });
+                  if (resp.ok) {
+                    const txt = await resp.text();
+                    sigB64 = txt.trim();
+                  }
+                } catch {}
+              }
+
+              if (sigB64) {
+                // Attach as JVM property (base64 string)
+                customJavaArgs.push(`-Dfishbattery.cape.sig=${sigB64}`);
+                onLog?.(`[capes] Attached cape signature via JVM arg (len=${sigB64.length})`);
+              } else {
+                onLog?.(`[capes] No cape signature found for premium cape`);
+              }
+            }
+          } catch (e) {
+            onLog?.(`[capes] Error while attaching cape signature: ${String((e as any)?.message ?? e)}`);
+          }
         } catch (err) {
           onLog?.(`[capes] Failed to copy selected cape: ${String((err as any)?.message ?? err)}`);
         }
@@ -553,7 +600,7 @@ async function launchResolved(
       } else {
         onLog?.(`[capes] Bridge mod not found in instance mods (${modsDir}). Attempting to fetch release and install bridge.`);
         try {
-          await tryInstallBridgeFromGithub(modsDir, instance.mcVersion, instance.loader, onLog);
+          await installBridgeToMods(modsDir, instance.mcVersion, instance.loader, onLog);
         } catch (err) {
           onLog?.(`[capes] Failed to install bridge mod: ${String((err as any)?.message ?? err)}`);
         }
@@ -612,56 +659,6 @@ async function launchResolved(
   return true;
 }
 
-async function tryInstallBridgeFromGithub(modsDir: string, mcVersion: string, loader: string, onLog?: (m: string) => void) {
-  const owner = "fishbatteryapp";
-  const repo = "fishbattery-cape-bridge";
-  const tag = "v1.2.2"; // target release
-
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`;
-  const headers: any = { "User-Agent": "FishbatteryLauncher/1.0", Accept: "application/vnd.github.v3+json" };
-  if (process.env.GITHUB_TOKEN) headers.Authorization = `token ${process.env.GITHUB_TOKEN}`;
-
-  const release = await new Promise<any>((resolve, reject) => {
-    const req = https.get(apiUrl, { headers }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (c) => chunks.push(Buffer.from(c)));
-      res.on("end", () => {
-        try {
-          const body = Buffer.concat(chunks).toString("utf8");
-          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(JSON.parse(body));
-          } else {
-            reject(new Error(`GitHub API ${res.statusCode}: ${body}`));
-          }
-        } catch (e) { reject(e); }
-      });
-    });
-    req.on("error", reject);
-    req.end();
-  });
-
-  const assets: any[] = release.assets || [];
-  const desired = assets.find(a => {
-    const name = String(a.name || "").toLowerCase();
-    return name.includes(String(mcVersion).toLowerCase()) && name.includes(String(loader || "fabric").toLowerCase()) && name.endsWith('.jar');
-  }) || assets.find(a => String(a.name || "").toLowerCase().includes('fabric') && a.name.endsWith('.jar'));
-
-  if (!desired) throw new Error('No suitable bridge JAR found in release assets');
-
-  const outPath = path.join(modsDir, desired.name);
-  onLog?.(`[capes] Downloading bridge asset ${desired.name} to ${outPath}`);
-
-  await new Promise<void>((resolve, reject) => {
-    const fileStream = fs.createWriteStream(outPath);
-    const headers2: any = { "User-Agent": "FishbatteryLauncher/1.0" };
-    if (process.env.GITHUB_TOKEN) headers2.Authorization = `token ${process.env.GITHUB_TOKEN}`;
-    https.get(desired.browser_download_url, { headers: headers2 }, (res) => {
-      if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) return reject(new Error(`Download failed: ${res.statusCode}`));
-      pipeline(res, fileStream).then(() => resolve()).catch(reject);
-    }).on('error', reject);
-  });
-
-  onLog?.(`[capes] Bridge asset installed: ${outPath}`);
-}
+// Bridge install moved to src/main/bridgeInstaller.ts
 
 
