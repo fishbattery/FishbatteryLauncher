@@ -10,3 +10,5 @@ fishbattery-web/
 launcher-cape-bridges/
 capes/
 .vscode/
+secrets/
+scripts\generate_cape_keys.js
