@@ -97,9 +97,15 @@ export function createInstance(cfg: Omit<InstanceConfig, "createdAt">) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const installer = require("./bridgeInstaller") as typeof import("./bridgeInstaller");
-      void installer.installBridgeToMods(modsDir, full.mcVersion, full.loader).catch(() => {});
-    } catch {
-      // ignore
+      void installer.installBridgeToMods(modsDir, full.mcVersion, full.loader).catch((err) => {
+        try {
+          // Log installer error to main process console for diagnostics
+          // eslint-disable-next-line no-console
+          console.error("[bridgeInstaller] Pre-install failed for instance %s: %O", full.id, err);
+        } catch {}
+      });
+    } catch (e) {
+      try { console.error("[bridgeInstaller] Failed to require installer: %O", e); } catch {}
     }
   } catch {}
 
