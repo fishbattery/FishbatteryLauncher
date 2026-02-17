@@ -6,7 +6,7 @@ import { pipeline } from "node:stream/promises";
 export async function installBridgeToMods(modsDir: string, mcVersion: string, loader: string, onLog?: (m: string) => void) {
   const owner = "fishbatteryapp";
   const repo = "fishbattery-cape-bridge";
-  const tag = "v1.2.2"; // release we publish
+  const tag = "v1.2.3"; // release we publish (updated)
 
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`;
   const headers: any = { "User-Agent": "FishbatteryLauncher/1.0", Accept: "application/vnd.github.v3+json" };
@@ -41,16 +41,35 @@ export async function installBridgeToMods(modsDir: string, mcVersion: string, lo
 
   fs.mkdirSync(modsDir, { recursive: true });
   const outPath = path.join(modsDir, desired.name);
+  const tmpPath = outPath + ".partial";
   onLog?.(`[capes] Downloading bridge asset ${desired.name} to ${outPath}`);
 
   await new Promise<void>((resolve, reject) => {
-    const fileStream = fs.createWriteStream(outPath);
+    const fileStream = fs.createWriteStream(tmpPath);
     const headers2: any = { "User-Agent": "FishbatteryLauncher/1.0" };
     if (process.env.GITHUB_TOKEN) headers2.Authorization = `token ${process.env.GITHUB_TOKEN}`;
     https.get(desired.browser_download_url, { headers: headers2 }, (res) => {
       if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) return reject(new Error(`Download failed: ${res.statusCode}`));
-      pipeline(res, fileStream).then(() => resolve()).catch(reject);
-    }).on('error', reject);
+      pipeline(res, fileStream)
+        .then(() => {
+          try {
+            const stat = fs.statSync(tmpPath);
+            if (!stat.isFile() || stat.size === 0) {
+              try { fs.unlinkSync(tmpPath); } catch (e) {}
+              return reject(new Error('Downloaded bridge JAR is empty'));
+            }
+            fs.renameSync(tmpPath, outPath);
+            return resolve();
+          } catch (e) {
+            try { fs.unlinkSync(tmpPath); } catch (__) {}
+            return reject(e);
+          }
+        })
+        .catch((err) => {
+          try { fs.unlinkSync(tmpPath); } catch (__) {}
+          reject(err);
+        });
+    }).on('error', (err) => { try { fs.unlinkSync(tmpPath); } catch (__) {} ; reject(err); });
   });
 
   onLog?.(`[capes] Bridge asset installed: ${outPath}`);
