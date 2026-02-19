@@ -192,6 +192,7 @@ body{
   display: grid;
   grid-template-columns: 270px 1fr;
   height: calc(100% - 34px);
+  min-height: 0;
 }
 
 .sidebar{
@@ -202,6 +203,8 @@ body{
   gap: 16px;
   background: radial-gradient(1200px 500px at -200px -50px, rgba(var(--accent-rgb),.08), transparent 50%),
               var(--bg);
+  overflow: auto;
+  min-height: 0;
 }
 
 .brand{
@@ -341,6 +344,7 @@ body{
   display: grid;
   grid-template-rows: 64px 1fr;
   min-width: 0;
+  min-height: 0;
 }
 
 .topbar{
@@ -459,7 +463,8 @@ body{
   border: 1px solid var(--border);
   border-radius: var(--r16);
   box-shadow: var(--shadow);
-  overflow: hidden;
+  overflow: auto;
+  max-height: min(70vh, 520px);
   display: none;
   z-index: 50;
 }
@@ -541,6 +546,7 @@ body{
 .content{
   padding: 16px;
   overflow: auto;
+  min-height: 0;
 }
 
 .sectionTitle{
@@ -750,6 +756,7 @@ pre{
 .modalBody{
   padding: 14px;
   overflow: auto;
+  min-height: 0;
 }
 
 .field{ margin-bottom: 12px; }
@@ -1301,13 +1308,15 @@ pre{
   grid-template-columns: 240px 1fr;
   gap: 12px;
   align-items: start;
+  min-height: 0;
 }
 
 .settingsNav{
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--panel);
-  overflow: hidden;
+  overflow: auto;
+  max-height: calc(100vh - 220px);
 }
 
 .setNavBtn{
@@ -1332,6 +1341,8 @@ pre{
   border-radius: 16px;
   background: var(--panel);
   padding: 14px;
+  overflow: auto;
+  max-height: calc(100vh - 220px);
 }
 
 .setPanel h3{

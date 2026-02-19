@@ -18,9 +18,9 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            script: dist:win
+            build_command: npm run dist:win -- --publish always
           - os: macos-latest
-            script: dist:mac
+            build_command: npm run dist:mac -- --publish always
 
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -40,4 +40,4 @@ jobs:
         run: npm ci
 
       - name: Build and publish artifacts
-        run: npm run ${{ matrix.script }} -- --publish always
+        run: ${{ matrix.build_command }}

@@ -6094,27 +6094,70 @@ winBtnMin.onclick = () => {
   void window.api.windowMinimize();
 };
 
-winBtnMax.onclick = async () => {
-  const maximized = await window.api.windowToggleMaximize();
+let topbarDragActive = false;
+let topbarDragPointerId: number | null = null;
+let topbarDragAnchorRatio = 0.5;
+let topbarDragNeedsRestore = false;
+let topbarDragMoveQueued: { cursorX: number; cursorY: number } | null = null;
+let topbarDragMoveInFlight = false;
+
+function queueTopbarDragMove(cursorX: number, cursorY: number) {
+  topbarDragMoveQueued = { cursorX, cursorY };
+  if (topbarDragMoveInFlight) return;
+  topbarDragMoveInFlight = true;
+
+  void (async () => {
+    while (topbarDragMoveQueued && topbarDragActive) {
+      const next = topbarDragMoveQueued;
+      topbarDragMoveQueued = null;
+      if (!next) break;
+
+      if (topbarDragNeedsRestore) {
+        const restored = await window.api.windowDragRestore(next.cursorX, next.cursorY, topbarDragAnchorRatio);
+        if (restored) {
+          topbarDragNeedsRestore = false;
+          await syncWindowMaxButtonState();
+          continue;
+        }
+      }
+
+      await window.api.windowDragMove(next.cursorX, next.cursorY, topbarDragAnchorRatio);
+    }
+    topbarDragMoveInFlight = false;
+  })();
+}
+
+async function stopTopbarDrag(cursorY?: number) {
+  if (!topbarDragActive) return;
+  topbarDragActive = false;
+  topbarDragMoveQueued = null;
+
+  if (cursorY != null) {
+    await window.api.windowDragEnd(cursorY);
+  }
+  await syncWindowMaxButtonState();
+}
+
+async function syncWindowMaxButtonState() {
+  const maximized = await window.api.windowIsMaximized();
   winBtnMax.classList.toggle("is-maximized", !!maximized);
+}
+
+winBtnMax.onclick = async () => {
+  await window.api.windowToggleMaximize();
+  await syncWindowMaxButtonState();
 };
 
 winBtnClose.onclick = () => {
   void window.api.windowClose();
 };
 
-let topbarDragActive = false;
-let topbarDragRestored = false;
-let topbarDragAnchorRatio = 0.5;
-let topbarDragStartX = 0;
-let topbarDragStartY = 0;
-
 windowTopbar.addEventListener("dblclick", (ev) => {
   const t = ev.target as HTMLElement | null;
   if (t?.closest(".windowTopbarBtn")) return;
   void (async () => {
-    const maximized = await window.api.windowToggleMaximize();
-    winBtnMax.classList.toggle("is-maximized", !!maximized);
+    await window.api.windowToggleMaximize();
+    await syncWindowMaxButtonState();
   })();
 });
 
@@ -6123,54 +6166,59 @@ windowTopbar.addEventListener("pointerdown", (ev) => {
   const t = ev.target as HTMLElement | null;
   if (t?.closest(".windowTopbarBtn")) return;
 
-  void (async () => {
-    const maximized = await window.api.windowIsMaximized();
-    if (!maximized) return;
-    ev.preventDefault();
-    const rect = windowTopbar.getBoundingClientRect();
-    const ratioRaw = (ev.clientX - rect.left) / Math.max(rect.width, 1);
-    topbarDragAnchorRatio = Math.max(0.05, Math.min(0.95, ratioRaw));
-    topbarDragActive = true;
-    topbarDragRestored = false;
-    topbarDragStartX = ev.screenX;
-    topbarDragStartY = ev.screenY;
-  })();
+  const rect = windowTopbar.getBoundingClientRect();
+  if (rect.width <= 0) return;
+
+  topbarDragActive = true;
+  topbarDragPointerId = ev.pointerId;
+  topbarDragNeedsRestore = winBtnMax.classList.contains("is-maximized");
+  topbarDragAnchorRatio = Math.max(0.05, Math.min(0.95, (ev.clientX - rect.left) / rect.width));
+  topbarDragMoveQueued = null;
+  if (windowTopbar.setPointerCapture) {
+    windowTopbar.setPointerCapture(ev.pointerId);
+  }
+  ev.preventDefault();
 });
 
-window.addEventListener("pointermove", (ev) => {
+windowTopbar.addEventListener("pointermove", (ev) => {
   if (!topbarDragActive) return;
-
-  const deltaX = Math.abs(ev.screenX - topbarDragStartX);
-  const deltaY = Math.abs(ev.screenY - topbarDragStartY);
-  if (!topbarDragRestored && deltaX + deltaY < 2) return;
-
-  if (!topbarDragRestored) {
-    topbarDragRestored = true;
-    winBtnMax.classList.remove("is-maximized");
-    void window.api.windowDragRestore(ev.screenX, ev.screenY, topbarDragAnchorRatio);
-    return;
-  }
-  void window.api.windowDragMove(ev.screenX, ev.screenY, topbarDragAnchorRatio);
+  if (topbarDragPointerId != null && ev.pointerId !== topbarDragPointerId) return;
+  queueTopbarDragMove(ev.clientX, ev.clientY);
 });
 
-function stopTopbarDrag(screenY?: number) {
-  if (topbarDragActive && topbarDragRestored && Number.isFinite(screenY)) {
-    void (async () => {
-      const maximized = await window.api.windowDragEnd(Number(screenY));
-      winBtnMax.classList.toggle("is-maximized", !!maximized);
-    })();
-  } else if (topbarDragActive) {
-    void (async () => {
-      const maximized = await window.api.windowIsMaximized();
-      winBtnMax.classList.toggle("is-maximized", !!maximized);
-    })();
+windowTopbar.addEventListener("pointerup", (ev) => {
+  if (!topbarDragActive) return;
+  if (topbarDragPointerId != null && ev.pointerId !== topbarDragPointerId) return;
+  if (windowTopbar.releasePointerCapture && topbarDragPointerId != null) {
+    try {
+      windowTopbar.releasePointerCapture(topbarDragPointerId);
+    } catch {
+      // no-op
+    }
   }
-  topbarDragActive = false;
-  topbarDragRestored = false;
-}
+  topbarDragPointerId = null;
+  void stopTopbarDrag(ev.clientY);
+});
 
-window.addEventListener("pointerup", (ev) => stopTopbarDrag(ev.screenY));
-window.addEventListener("pointercancel", () => stopTopbarDrag());
+windowTopbar.addEventListener("pointercancel", () => {
+  if (!topbarDragActive) return;
+  topbarDragPointerId = null;
+  void stopTopbarDrag();
+});
+
+window.addEventListener("blur", () => {
+  if (!topbarDragActive) return;
+  topbarDragPointerId = null;
+  void stopTopbarDrag();
+});
+
+window.addEventListener("resize", () => {
+  void syncWindowMaxButtonState();
+});
+window.addEventListener("focus", () => {
+  void syncWindowMaxButtonState();
+});
+void syncWindowMaxButtonState();
 
 // Initial
 applySettingsToDom(getSettings());
