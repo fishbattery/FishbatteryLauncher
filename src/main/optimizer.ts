@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { setModEnabled, refreshModsForInstance } from "./mods";
 import { listInstances, updateInstance } from "./instances";
 
+// User-selectable optimization aggressiveness presets.
 export type OptimizerProfile = "conservative" | "balanced" | "aggressive";
 
 export type HardwareSummary = {
@@ -21,8 +22,10 @@ export type OptimizerPreview = {
   modsToEnable: string[];
 };
 
+// Catalog-managed performance mod set toggled by optimizer profiles.
 const PERF_MOD_IDS = ["sodium", "lithium", "ferrite-core", "modernfix", "c2me"];
 
+// WMIC GPU detection is Windows-only and intentionally best-effort.
 function detectGpuModel(): string | null {
   if (process.platform !== "win32") return null;
   try {
@@ -48,6 +51,7 @@ export function detectHardwareSummary(): HardwareSummary {
   };
 }
 
+// Memory recommendation reserves headroom for OS/background tasks and rounds to 256MB.
 function calcRecommendedMemoryMb(totalRamMb: number, profile: OptimizerProfile): number {
   const reserveMb = 2048;
   const cap = Math.max(2048, totalRamMb - reserveMb);
@@ -61,6 +65,7 @@ function calcRecommendedMemoryMb(totalRamMb: number, profile: OptimizerProfile):
   return rounded;
 }
 
+// JVM tuning profile selector; aggressive opts into ZGC, others stay on G1GC.
 function jvmArgsForProfile(profile: OptimizerProfile): { gc: "G1GC" | "ZGC"; args: string } {
   if (profile === "aggressive") {
     return {
@@ -98,6 +103,7 @@ export async function applyOptimizer(instanceId: string, profile: OptimizerProfi
   if (!inst) throw new Error("Instance not found");
 
   const preview = buildOptimizerPreview(profile);
+  // Persist previous values so user can restore one-click defaults later.
   const backup = {
     memoryMb: Number(inst.memoryMb || 4096),
     jvmArgsOverride: inst.jvmArgsOverride ?? null
@@ -110,6 +116,7 @@ export async function applyOptimizer(instanceId: string, profile: OptimizerProfi
   } as any);
 
   for (const modId of PERF_MOD_IDS) {
+    // Toggle curated perf stack based on profile target.
     const shouldEnable = preview.modsToEnable.includes(modId);
     await setModEnabled(instanceId, modId, shouldEnable);
   }

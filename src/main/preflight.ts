@@ -8,6 +8,7 @@ import { getDataRoot, getInstancesRoot, getUserDataRoot } from "./paths";
 import { getUpdateChannel } from "./updater";
 import { readJsonFile, writeJsonFile } from "./store";
 
+// Health-check severity levels consumed by renderer status summaries.
 export type PreflightSeverity = "ok" | "warning" | "critical";
 
 export type PreflightCheck = {
@@ -26,10 +27,12 @@ export type PreflightResult = {
   appVersion: string;
 };
 
+// Last preflight snapshot location.
 function preflightPath() {
   return path.join(getDataRoot(), "preflight-health.json");
 }
 
+// Helper to keep check creation uniform and readable.
 function addCheck(
   checks: PreflightCheck[],
   id: string,
@@ -41,6 +44,7 @@ function addCheck(
   checks.push({ id, title, severity, detail, remediation });
 }
 
+// Write-probe that validates directory creation and write/delete permissions.
 function checkWritablePath(checks: PreflightCheck[], id: string, title: string, dirPath: string) {
   try {
     fs.mkdirSync(dirPath, { recursive: true });
@@ -60,6 +64,7 @@ function checkWritablePath(checks: PreflightCheck[], id: string, title: string, 
   }
 }
 
+// Validate bundled/system Java availability and baseline version compatibility.
 function detectJavaRuntime(checks: PreflightCheck[]) {
   const candidates =
     process.platform === "win32"
@@ -112,6 +117,7 @@ function detectJavaRuntime(checks: PreflightCheck[]) {
   );
 }
 
+// Sanity-check serialized instance metadata and active instance pointer integrity.
 function validateInstancesMetadata(checks: PreflightCheck[]) {
   const db = listInstances();
   const issues: string[] = [];
@@ -151,6 +157,7 @@ function validateInstancesMetadata(checks: PreflightCheck[]) {
   );
 }
 
+// Guardrail that ensures updater channel remains within supported set.
 function validateUpdaterConfig(checks: PreflightCheck[]) {
   const channel = getUpdateChannel();
   if (channel !== "stable" && channel !== "beta") {
@@ -183,6 +190,7 @@ function validateUpdaterConfig(checks: PreflightCheck[]) {
 export function runPreflightChecks(): PreflightResult {
   const checks: PreflightCheck[] = [];
 
+  // Filesystem + runtime + config checks cover common startup/launch failures.
   checkWritablePath(checks, "write-userdata", "UserData Write Access", getUserDataRoot());
   checkWritablePath(checks, "write-data", "Data Root Write Access", getDataRoot());
   checkWritablePath(checks, "write-instances", "Instances Write Access", getInstancesRoot());
@@ -209,5 +217,6 @@ export function runPreflightChecks(): PreflightResult {
 }
 
 export function getLastPreflightChecks(): PreflightResult | null {
+  // Return cached result so renderer can display status before new checks run.
   return readJsonFile(preflightPath(), null as any);
 }

@@ -3,6 +3,7 @@ import { installFabricVersion } from "./fabricInstall";
 import { listInstances } from "./instances";
 import { refreshModsForInstance } from "./mods";
 
+// Normalized diagnosis labels consumed by renderer diagnostics UI.
 export type LaunchDiagnosisCode =
   | "missing-fabric-loader"
   | "wrong-java-version"
@@ -26,11 +27,13 @@ export type LaunchDiagnosis = {
   canAutoFix: boolean;
 };
 
+// Keep log scanning bounded for speed and to avoid stale historical noise.
 function tail(lines: string[], max = 180) {
   if (!Array.isArray(lines)) return [];
   return lines.slice(Math.max(0, lines.length - max));
 }
 
+// Case-insensitive signature matching helper over aggregated log text.
 function hasAny(haystack: string, needles: string[]) {
   return needles.some((n) => haystack.includes(n));
 }
@@ -48,6 +51,7 @@ export function diagnoseLaunchLogs(lines: string[]): LaunchDiagnosis {
       "missing fabric"
     ])
   ) {
+    // Runtime/bootstrap issues where Fabric files are missing or inaccessible.
     return {
       code: "missing-fabric-loader",
       severity: "critical",
@@ -70,6 +74,7 @@ export function diagnoseLaunchLogs(lines: string[]): LaunchDiagnosis {
       "duplicatemodsfoundexception"
     ])
   ) {
+    // Duplicate mod ids are one of the most common hard launch blockers.
     return {
       code: "duplicate-mods",
       severity: "critical",
@@ -92,6 +97,7 @@ export function diagnoseLaunchLogs(lines: string[]): LaunchDiagnosis {
       "requires java"
     ])
   ) {
+    // Java class-version mismatches map to wrong runtime major version.
     return {
       code: "wrong-java-version",
       severity: "critical",
@@ -120,6 +126,7 @@ export function diagnoseLaunchLogs(lines: string[]): LaunchDiagnosis {
       "modresolutionexception"
     ])
   ) {
+    // Dependency/classpath failures usually require dependency install/compat updates.
     return {
       code: "mod-mismatch",
       severity: "critical",
@@ -160,6 +167,7 @@ export async function applyLaunchDiagnosisFix(instanceId: string, action: Launch
   }
 
   if (action === "fix-duplicate-mods") {
+    // Local filesystem cleanup only; no network calls.
     const result = fixDuplicateMods(instanceId);
     return {
       ok: true,

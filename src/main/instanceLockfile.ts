@@ -10,6 +10,7 @@ import { getModCacheDir, getPackCacheDir } from "./paths";
 import { downloadBuffer } from "./modrinth";
 import { readJsonFile, writeJsonFile } from "./store";
 
+// Normalized lockfile artifact entry shared by both mods and packs.
 export type LockfileArtifactEntry = {
   id: string;
   category: "mod" | "pack";
@@ -74,6 +75,7 @@ export type ApplyLockfileResult = {
   drift: LockfileDriftReport;
 };
 
+// Canonical location for per-instance lockfile snapshots.
 function lockfilePath(instanceId: string) {
   return path.join(getInstanceDir(instanceId), "instance.lock.json");
 }
@@ -84,6 +86,7 @@ function sha1OfBuffer(buf: Buffer) {
   return h.digest("hex");
 }
 
+// Hash-on-read helper used by drift verification against files on disk.
 function sha1OfFile(filePath: string) {
   const h = crypto.createHash("sha1");
   const data = fs.readFileSync(filePath);
@@ -91,12 +94,14 @@ function sha1OfFile(filePath: string) {
   return h.digest("hex");
 }
 
+// Ensure mod output folder exists before lockfile application.
 function ensureModsDir(instanceId: string) {
   const dir = path.join(getInstanceDir(instanceId), "mods");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
+// Resource/shader packs are split into different Minecraft folders.
 function ensurePackDir(instanceId: string, kind: "resourcepack" | "shaderpack") {
   const folder = kind === "resourcepack" ? "resourcepacks" : "shaderpacks";
   const dir = path.join(getInstanceDir(instanceId), folder);
@@ -104,10 +109,12 @@ function ensurePackDir(instanceId: string, kind: "resourcepack" | "shaderpack") 
   return dir;
 }
 
+// Keep derived filenames filesystem-safe and deterministic.
 function sanitizeName(name: string) {
   return String(name || "").replace(/[^a-zA-Z0-9._-]+/g, "_");
 }
 
+// Preserve id-prefixed naming so we can identify managed files later.
 function lockfileModFileName(id: string, upstream: string) {
   return `${id}__${sanitizeName(upstream)}`;
 }
@@ -116,6 +123,7 @@ function lockfilePackFileName(id: string, upstream: string) {
   return `${id}__${sanitizeName(upstream)}`;
 }
 
+// Runtime validation guard for imported/loaded lockfiles.
 function validateLockfile(input: any): InstanceLockfile {
   if (!input || typeof input !== "object") throw new Error("Invalid lockfile: expected object");
   if (input.schemaVersion !== 1) throw new Error("Invalid lockfile: unsupported schemaVersion");
@@ -125,6 +133,7 @@ function validateLockfile(input: any): InstanceLockfile {
   return input as InstanceLockfile;
 }
 
+// Default resolved state materialization for a successfully applied mod entry.
 function defaultModResolved(entry: LockfileArtifactEntry, fileName: string): ResolvedMod {
   return {
     catalogId: entry.id,
@@ -142,6 +151,7 @@ function defaultModResolved(entry: LockfileArtifactEntry, fileName: string): Res
   };
 }
 
+// Default resolved state materialization for a successfully applied pack entry.
 function defaultPackResolved(entry: LockfileArtifactEntry, fileName: string): ResolvedPack {
   return {
     catalogId: entry.id,
@@ -190,6 +200,7 @@ export function generateInstanceLockfile(instanceId: string, opts?: { write?: bo
   const artifacts: LockfileArtifactEntry[] = [];
   const notes: string[] = [];
 
+  // Capture current mod catalog state (enabled flags + resolved artifact metadata).
   for (const mod of CATALOG) {
     const resolved = modsState.resolved?.[mod.id];
     const enabled = mod.required ? true : !!modsState.enabled[mod.id];
@@ -211,11 +222,13 @@ export function generateInstanceLockfile(instanceId: string, opts?: { write?: bo
     };
     artifacts.push(entry);
 
+    // Surface non-resolved enabled entries so exports immediately communicate risk.
     if (enabled && entry.status !== "ok") {
       notes.push(`Mod ${mod.id} is enabled but not resolved (${entry.status}).`);
     }
   }
 
+  // Capture current pack catalog state with the same shape used by apply().
   for (const pack of PACK_CATALOG) {
     const resolved = packsState.resolved?.[pack.id];
     const enabled = pack.required ? true : !!packsState.enabled[pack.id];
@@ -263,6 +276,7 @@ export function generateInstanceLockfile(instanceId: string, opts?: { write?: bo
   };
 
   if (opts?.write !== false) {
+    // Persist by default to keep instance folder and exported snapshots aligned.
     writeJsonFile(lockfilePath(instanceId), lockfile);
   }
 
@@ -272,6 +286,7 @@ export function generateInstanceLockfile(instanceId: string, opts?: { write?: bo
 export async function applyInstanceLockfile(instanceId: string, lockfileInput: InstanceLockfile): Promise<ApplyLockfileResult> {
   const lockfile = validateLockfile(lockfileInput);
 
+  // Lockfile owns instance runtime config; apply it first so follow-up resolution is coherent.
   updateInstance(instanceId, {
     mcVersion: lockfile.instance.mcVersion,
     loader: lockfile.instance.loader,
@@ -299,6 +314,7 @@ export async function applyInstanceLockfile(instanceId: string, lockfileInput: I
   const modEntries = lockfile.artifacts.filter((x) => x.category === "mod");
   const packEntries = lockfile.artifacts.filter((x) => x.category === "pack");
 
+  // Reset managed mod artifacts before rehydrating from lockfile state.
   for (const f of fs.readdirSync(modsDir)) {
     const full = path.join(modsDir, f);
     if (!fs.statSync(full).isFile()) continue;
@@ -313,6 +329,7 @@ export async function applyInstanceLockfile(instanceId: string, lockfileInput: I
 
     modsState.enabled[entry.id] = entry.required ? true : !!entry.enabled;
 
+    // Preserve disabled/unavailable states without attempting download/copy.
     if (!entry.enabled || entry.status !== "ok") {
       modsState.resolved[entry.id] = {
         catalogId: entry.id,
@@ -335,8 +352,10 @@ export async function applyInstanceLockfile(instanceId: string, lockfileInput: I
     const cachePath = path.join(modCacheDir, cacheName);
 
     try {
+      // Download only on cache miss; this keeps repeated imports fast and reproducible.
       if (!fs.existsSync(cachePath)) {
         const buf = await downloadBuffer(entry.downloadUrl);
+        // Verify lockfile hash before trusting downloaded content.
         if (entry.sha1) {
           const got = sha1OfBuffer(buf);
           if (got.toLowerCase() !== entry.sha1.toLowerCase()) {
@@ -351,6 +370,7 @@ export async function applyInstanceLockfile(instanceId: string, lockfileInput: I
       fs.copyFileSync(cachePath, targetPath);
       modsState.resolved[entry.id] = defaultModResolved(entry, path.basename(targetPath));
     } catch (err: any) {
+      // Keep applying remaining entries even when one fails.
       issues.push(`Mod ${entry.id}: ${String(err?.message ?? err)}`);
       modsState.resolved[entry.id] = {
         catalogId: entry.id,
@@ -372,6 +392,7 @@ export async function applyInstanceLockfile(instanceId: string, lockfileInput: I
 
     const dir = (entry.packKind || catalogPack.kind) === "shaderpack" ? packsShaderDir : packsResourceDir;
 
+    // Remove prior managed pack files for this catalog id before installing target artifact.
     for (const f of fs.readdirSync(dir)) {
       const full = path.join(dir, f);
       if (!fs.statSync(full).isFile()) continue;
@@ -433,8 +454,10 @@ export async function applyInstanceLockfile(instanceId: string, lockfileInput: I
 
   saveModsState(instanceId, modsState);
   savePacksState(instanceId, packsState);
+  // Store the normalized lockfile that was actually applied.
   writeJsonFile(lockfilePath(instanceId), lockfile);
 
+  // Drift report is computed immediately so callers can react to partial/broken applies.
   const drift = checkInstanceLockfileDrift(instanceId, lockfile);
 
   return {
@@ -455,6 +478,7 @@ export function checkInstanceLockfileDrift(instanceId: string, lockfileInput?: I
 
   if (!lockfile) {
     const issues: LockfileDriftIssue[] = [];
+    // Missing lockfile is only actionable when state indicates managed artifacts should exist.
     if (stateExpectedArtifacts > 0) {
       issues.push({
         id: "lockfile",
@@ -499,6 +523,7 @@ export function checkInstanceLockfileDrift(instanceId: string, lockfileInput?: I
           : packsResourceDir;
 
     const expectedName = entry.fileName;
+    // Fallback to id-prefix discovery for older lockfiles with missing/renamed fileName.
     const candidateName =
       expectedName && fs.existsSync(path.join(baseDir, expectedName))
         ? expectedName

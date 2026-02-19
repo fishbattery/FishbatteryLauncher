@@ -5,6 +5,7 @@ import AdmZip from "adm-zip";
 import { createInstance, getInstanceDir, InstanceConfig, listInstances } from "./instances";
 import { applyInstanceLockfile, generateInstanceLockfile, type ApplyLockfileResult, type InstanceLockfile } from "./instanceLockfile";
 
+// Lightweight metadata used to validate import compatibility before touching disk.
 type ExportManifest = {
   schemaVersion: 1;
   exportedAt: string;
@@ -21,10 +22,12 @@ type ExportManifest = {
   };
 };
 
+// Sanitize user-facing instance names for filesystem-safe zip naming.
 function sanitizeFileName(name: string) {
   return String(name || "instance").replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").trim();
 }
 
+// Avoid collisions when importing an instance into an existing library.
 function withUniqueImportedName(baseName: string): string {
   const db = listInstances();
   const existing = new Set((db.instances ?? []).map((i) => String(i?.name ?? "").toLowerCase()));
@@ -38,6 +41,7 @@ function withUniqueImportedName(baseName: string): string {
   }
 }
 
+// Zip-slip guard for extracted archive paths.
 function isSafeRelative(rel: string) {
   if (!rel) return false;
   if (path.isAbsolute(rel)) return false;
@@ -70,6 +74,7 @@ export function exportInstanceToZip(instanceId: string, outZipPath: string) {
   };
 
   const zip = new AdmZip();
+  // Write manifest + lockfile first, then include full instance directory payload.
   zip.addFile("manifest.json", Buffer.from(JSON.stringify(manifest, null, 2), "utf8"));
   const lockfile = generateInstanceLockfile(instanceId, { write: true });
   zip.addFile("instance.lock.json", Buffer.from(JSON.stringify(lockfile, null, 2), "utf8"));
@@ -106,6 +111,7 @@ type ImportInstanceResult = {
   lockfileResult: ApplyLockfileResult | null;
 };
 
+// Accept both root and nested lockfile locations for backward compatibility.
 function readOptionalLockfileFromZip(zip: AdmZip): InstanceLockfile | null {
   const rootEntry = zip.getEntry("instance.lock.json");
   const nestedEntry = zip.getEntry("instance/instance.lock.json");
@@ -147,6 +153,7 @@ export async function importInstanceFromZip(zipPath: string): Promise<ImportInst
   });
 
   const instanceDir = getInstanceDir(newId);
+  // Restore archived instance payload under the new instance directory.
   for (const entry of zip.getEntries()) {
     if (entry.isDirectory) continue;
     if (!entry.entryName.startsWith(prefix)) continue;
@@ -161,6 +168,7 @@ export async function importInstanceFromZip(zipPath: string): Promise<ImportInst
 
   let lockfileResult: ApplyLockfileResult | null = null;
   if (lockfile) {
+    // Re-apply managed mods/packs/runtime exactly as exported when lockfile is available.
     lockfileResult = await applyInstanceLockfile(newId, lockfile);
   }
 
