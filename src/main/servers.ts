@@ -8,6 +8,7 @@ import { loadPacksState, savePacksState } from "./packs";
 import { applyInstanceLockfile, generateInstanceLockfile, type InstanceLockfile } from "./instanceLockfile";
 import { readJsonFile, writeJsonFile } from "./store";
 
+// Per-instance saved multiplayer server entries.
 export type InstanceServerEntry = {
   id: string;
   name: string;
@@ -46,6 +47,7 @@ type ServerProfileManifest = {
   enabledPacks: string[];
 };
 
+// Each instance stores its own server list to keep configs isolated.
 function serversPath(instanceId: string) {
   return path.join(getInstanceDir(instanceId), "servers.json");
 }
@@ -77,6 +79,7 @@ function normalizeServerInput(input: Partial<InstanceServerEntry>) {
   };
 }
 
+// Basic zip-slip protection for imported profile archives.
 function sanitizeArchivePath(rel: string) {
   if (!rel) return false;
   if (path.isAbsolute(rel)) return false;
@@ -84,6 +87,7 @@ function sanitizeArchivePath(rel: string) {
   return !norm.startsWith("..") && !norm.includes(`..${path.sep}`);
 }
 
+// Recursively copy a directory into a zip preserving relative structure.
 function addDirToZip(zip: AdmZip, diskDir: string, zipPrefix: string) {
   if (!fs.existsSync(diskDir) || !fs.statSync(diskDir).isDirectory()) return;
 
@@ -115,6 +119,7 @@ export function upsertInstanceServer(instanceId: string, input: Partial<Instance
   const normalized = normalizeServerInput(input);
 
   if (input.id) {
+    // Update path for an existing entry.
     const idx = state.servers.findIndex((x) => x.id === input.id);
     if (idx === -1) throw new Error("Server entry not found");
 
@@ -127,6 +132,7 @@ export function upsertInstanceServer(instanceId: string, input: Partial<Instance
     return state.servers[idx];
   }
 
+  // Create path for a new entry.
   const id = typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
     : `${now}-${Math.random().toString(16).slice(2)}`;
@@ -205,11 +211,13 @@ export function exportServerProfile(instanceId: string, serverId: string, outZip
   };
 
   const zip = new AdmZip();
+  // Manifest + lockfile make imports reproducible across machines.
   zip.addFile("server-profile.json", Buffer.from(JSON.stringify(manifest, null, 2), "utf8"));
   const lockfile = generateInstanceLockfile(instanceId, { write: true });
   zip.addFile("instance.lock.json", Buffer.from(JSON.stringify(lockfile, null, 2), "utf8"));
 
   const cfgDir = path.join(getInstanceDir(instanceId), "config");
+  // Include config folder to preserve server-specific tweaks.
   addDirToZip(zip, cfgDir, "config");
 
   fs.mkdirSync(path.dirname(outZipPath), { recursive: true });
@@ -271,6 +279,7 @@ export async function importServerProfile(instanceId: string, zipPath: string) {
   const modsState = loadModsState(instanceId);
   const packsState = loadPacksState(instanceId);
 
+  // Mirror import selection onto the local enabled map.
   const enabledModsSet = new Set(manifest.enabledMods || []);
   for (const key of Object.keys(modsState.enabled)) {
     modsState.enabled[key] = enabledModsSet.has(key);
@@ -299,6 +308,7 @@ export async function importServerProfile(instanceId: string, zipPath: string) {
   const instanceDir = getInstanceDir(instanceId);
   const cfgRoot = path.join(instanceDir, "config");
 
+  // Restore bundled config files, skipping unsafe/invalid entries.
   for (const entry of zip.getEntries()) {
     if (entry.isDirectory) continue;
     if (!entry.entryName.startsWith("config/")) continue;
@@ -326,6 +336,7 @@ export async function importServerProfile(instanceId: string, zipPath: string) {
   };
 
   if (lockfile) {
+    // If present, apply lockfile last so dependency resolution reflects imported content.
     out.lockfile = await applyInstanceLockfile(instanceId, lockfile);
   }
 

@@ -7,6 +7,12 @@ import { readJsonFile, writeJsonFile } from "./store";
 import { getPackCacheDir } from "./paths";
 import { downloadBuffer, resolveLatestModrinth } from "./modrinth";
 
+// Packs service overview:
+// - Manages resourcepack/shaderpack catalog state per instance (`packs-state.json`).
+// - Resolves latest compatible files from Modrinth.
+// - Installs files into instance `resourcepacks` / `shaderpacks` folders.
+// - Supports immediate enable/disable and refresh synchronization.
+
 export type PacksState = {
   enabled: Record<string, boolean>;
   resolved: Record<string, ResolvedPack>;

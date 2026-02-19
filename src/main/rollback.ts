@@ -5,6 +5,7 @@ import { readJsonFile, writeJsonFile } from "./store";
 import { loadModsState, refreshModsForInstance, saveModsState } from "./mods";
 import { loadPacksState, refreshPacksForInstance, savePacksState } from "./packs";
 
+// Snapshot triggers used for rollback history labeling.
 type RollbackReason = "instance-preset" | "mods-refresh" | "packs-refresh" | "manual";
 
 type RollbackSnapshot = {
@@ -33,6 +34,7 @@ type RollbackDb = {
 
 const MAX_SNAPSHOTS = 8;
 
+// Keep rollback storage per instance to avoid cross-instance state leakage.
 function getRollbackPath(instanceId: string) {
   return path.join(getInstanceDir(instanceId), "rollback-snapshots.json");
 }
@@ -73,6 +75,7 @@ export function createRollbackSnapshot(instanceId: string, reason: RollbackReaso
     packsEnabled: { ...(packs.enabled || {}) }
   };
 
+  // Latest snapshot first; cap file growth with a fixed history window.
   const rollback = loadRollbackDb(instanceId);
   rollback.snapshots.unshift(snap);
   rollback.snapshots = rollback.snapshots.slice(0, MAX_SNAPSHOTS);
@@ -102,6 +105,7 @@ export async function restoreLatestRollbackSnapshot(instanceId: string) {
   });
 
   const mods = loadModsState(instanceId);
+  // Restore enabled flags exactly as they were at snapshot time.
   mods.enabled = { ...(latest.modsEnabled || {}) };
   saveModsState(instanceId, mods);
 
@@ -109,6 +113,7 @@ export async function restoreLatestRollbackSnapshot(instanceId: string) {
   packs.enabled = { ...(latest.packsEnabled || {}) };
   savePacksState(instanceId, packs);
 
+  // Refresh catalogs so restored toggles are reconciled with current metadata.
   if (latest.instance.loader === "fabric") {
     await refreshModsForInstance({
       instanceId,

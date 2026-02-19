@@ -6,6 +6,12 @@ import path from "node:path";
 import { getLauncherAccountsPath, getLauncherSessionPath } from "./paths";
 import { readJsonFile, writeJsonFile } from "./store";
 
+// Launcher account service overview:
+// - Manages Fishbattery account auth/session for desktop launcher.
+// - Persists account list + active account in local DB.
+// - Persists access token using OS-backed secure storage when available.
+// - Provides wrappers for auth/session/subscription/billing API endpoints.
+
 type LauncherAccount = {
   id: string;
   email: string;

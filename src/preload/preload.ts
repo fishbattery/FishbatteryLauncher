@@ -4,6 +4,11 @@
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron/renderer";
 
+// Preload overview:
+// - Exposes a typed `window.api` surface for renderer code.
+// - Every function here should map to an IPC handler in `src/main/ipc.ts` (or related main-process modules).
+// - Keep this surface explicit to avoid exposing unrestricted Node/Electron APIs to renderer context.
+
 contextBridge.exposeInMainWorld("api", {
   versionsList: () => ipcRenderer.invoke("versions:list"),
   windowMinimize: () => ipcRenderer.invoke("window:minimize"),
@@ -153,7 +158,7 @@ contextBridge.exposeInMainWorld("api", {
   ) => ipcRenderer.invoke("loader:install", instanceId, mcVersion, loader, loaderVersion),
   vanillaInstall: (mcVersion: string) => ipcRenderer.invoke("vanilla:install", mcVersion),
 
-  // ✅ IDs only
+  // IDs only
   launch: (
     instanceId: string,
     accountId: string,

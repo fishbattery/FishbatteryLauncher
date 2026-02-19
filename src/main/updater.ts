@@ -2,6 +2,7 @@ import { BrowserWindow, app } from "electron";
 import { autoUpdater } from "electron-updater";
 import fetch from "node-fetch";
 
+// Renderer-facing updater lifecycle states.
 export type UpdaterStatus =
   | "idle"
   | "checking"
@@ -26,6 +27,7 @@ let initialized = false;
 let mainWindow: BrowserWindow | null = null;
 let updateChannel: UpdateChannel = "stable";
 
+// In-memory source of truth for updater status used by IPC broadcasts.
 let state: UpdaterState = {
   status: "idle",
   currentVersion: autoUpdater.currentVersion.version,
@@ -46,6 +48,7 @@ const UPDATE_REPO_OWNER = process.env.UPDATE_REPO_OWNER || "fishbatteryapp";
 const UPDATE_REPO_NAME = process.env.UPDATE_REPO_NAME || "FishbatteryLauncher";
 const UPDATE_UA = `FishbatteryLauncher/${app.getVersion()} updater`;
 
+// Push current state snapshot to renderer listeners.
 function emitState() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send("updater:event", state);
@@ -61,6 +64,7 @@ function setState(patch: Partial<UpdaterState>) {
   emitState();
 }
 
+// Normalize env/input channel values to the supported enum.
 function normalizeChannel(value: string | null | undefined): UpdateChannel {
   const v = String(value ?? "").toLowerCase();
   return v === "beta" ? "beta" : "stable";
@@ -72,6 +76,7 @@ function applyUpdateChannel(channel: UpdateChannel) {
   autoUpdater.channel = channel;
 }
 
+// Small helper used for GitHub API calls with consistent headers/errors.
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, {
     headers: {
@@ -93,6 +98,7 @@ function hasExpectedAssets(assets: ReleaseAsset[]) {
   return { hasLatestYml, hasInstaller, hasBlockMap };
 }
 
+// Resolve the release feed entry for the chosen channel.
 async function resolveReleaseForChannel(channel: UpdateChannel): Promise<GithubRelease> {
   const base = `https://api.github.com/repos/${UPDATE_REPO_OWNER}/${UPDATE_REPO_NAME}`;
   if (channel === "stable") {
@@ -107,6 +113,7 @@ async function resolveReleaseForChannel(channel: UpdateChannel): Promise<GithubR
   return beta;
 }
 
+// Preflight release assets before invoking electron-updater to avoid silent failures.
 async function validateChannelArtifacts(channel: UpdateChannel) {
   const release = await resolveReleaseForChannel(channel);
   const assets = hasExpectedAssets(release.assets || []);
@@ -141,8 +148,10 @@ export function initUpdater(win: BrowserWindow) {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  // Respect selected channel at startup (stable by default).
   applyUpdateChannel(normalizeChannel(process.env.UPDATE_CHANNEL));
 
+  // Map electron-updater events into our renderer-consumable state model.
   autoUpdater.on("checking-for-update", () => {
     setState({ status: "checking", message: "Checking for updates...", progressPercent: undefined });
   });
@@ -208,6 +217,7 @@ export function setUpdateChannel(channel: UpdateChannel) {
 }
 
 export async function checkForUpdates() {
+  // Dev builds do not have update metadata/signatures; avoid false error noise.
   if (!app.isPackaged) {
     setState({
       status: "idle",
@@ -217,6 +227,7 @@ export async function checkForUpdates() {
     return false;
   }
   try {
+    // Validate artifacts first so UI can show actionable errors.
     const checked = await validateChannelArtifacts(updateChannel);
     setState({
       status: "checking",
@@ -236,6 +247,7 @@ export async function checkForUpdates() {
 }
 
 export async function downloadUpdate() {
+  // Dev builds intentionally skip real updater downloads.
   if (!app.isPackaged) {
     setState({
       status: "idle",
@@ -245,6 +257,7 @@ export async function downloadUpdate() {
     return false;
   }
   try {
+    // Keep download path guarded by the same artifact checks.
     await validateChannelArtifacts(updateChannel);
   } catch (err: any) {
     setState({

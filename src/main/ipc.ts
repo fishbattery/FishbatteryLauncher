@@ -90,6 +90,11 @@ import {
 } from "./updater";
 import { getProfileSummary, getProfileVisibility, setProfileVisibility } from "./profileShowcase";
 
+// IPC layer overview:
+// - Registers every renderer-accessible operation via `ipcMain.handle(...)`.
+// - Delegates business logic to focused modules in `src/main/*`.
+// - Keeps renderer thin: UI triggers IPC, IPC calls service module, returns serializable payload.
+
 export function registerIpc() {
   ipcMain.handle("window:minimize", async (e) => {
     const owner = BrowserWindow.fromWebContents(e.sender);

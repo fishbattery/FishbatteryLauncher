@@ -1,6 +1,11 @@
 ﻿// FishbatteryLauncher
 // Copyright (C) 2026 Gudmundur Magnus Johannsson
 // Licensed under GPL v3
+//
+// Renderer overview:
+// - Main UI controller for the launcher window.
+// - Wires DOM events, renders views (Library/Capes/Settings), and calls backend IPC via `window.api`.
+// - To trace behavior, start from element refs at top, then follow `.onclick` handlers and render/update functions.
 
 import "./index.css";
 import { CATALOG } from "../main/modrinthCatalog";
@@ -17,6 +22,7 @@ const winBtnMin = $("winBtnMin") as HTMLButtonElement;
 const winBtnMax = $("winBtnMax") as HTMLButtonElement;
 const winBtnClose = $("winBtnClose") as HTMLButtonElement;
 const windowTopbar = $("windowTopbar");
+const windowTopbarPill = $("windowTopbarPill");
 
 const instancesGrid = $("instancesGrid") as HTMLDivElement;
 const searchInstances = $("searchInstances") as HTMLInputElement;
@@ -30,6 +36,7 @@ const sidebarSponsoredBody = $("sidebarSponsoredBody");
 const sidebarSponsoredMediaText = $("sidebarSponsoredMediaText");
 const sidebarSponsoredCta = $("sidebarSponsoredCta") as HTMLButtonElement;
 const sidebarSponsoredUpgrade = $("sidebarSponsoredUpgrade") as HTMLButtonElement;
+const sidebarDiscordBtn = $("sidebarDiscordBtn") as HTMLButtonElement;
 
 const viewLibrary = $("viewLibrary");
 const viewCapes = $("viewCapes");
@@ -221,6 +228,7 @@ let cloudSyncState: CloudSyncUiState = {
   lastRemoteRevision: null
 };
 let cloudSyncIntervalId: number | null = null;
+let runningStatusPollId: number | null = null;
 let profileRenderToken = 0;
 let preflightState: any = null;
 let hasAutoCheckedUpdates = false;
@@ -296,6 +304,7 @@ type SponsoredFeedAd = {
 };
 
 const SPONSORED_FEED_URLS = ["https://fishbatteryapp.github.io/fishbattery-web/assets/ads.json"];
+const DISCORD_INVITE_URL = "https://discord.gg/yT5zRsRXsf";
 
 function getSelectedIconTransformPayload() {
   return {
@@ -2060,6 +2069,19 @@ function ensureCloudSyncTimer() {
   }, 5 * 60 * 1000);
 }
 
+function ensureRunningStatusPoll() {
+  if (runningStatusPollId != null) return;
+  runningStatusPollId = window.setInterval(() => {
+    void guarded(async () => {
+      if (!state.instances?.instances?.length) {
+        updateTopbarRunningPill(0);
+        return;
+      }
+      await renderInstances();
+    });
+  }, 3000);
+}
+
 function allInstancePresetIds(): InstancePresetId[] {
   return ["none", ...Object.keys(INSTANCE_PRESETS)] as InstancePresetId[];
 }
@@ -3100,8 +3122,23 @@ async function renderProfileSettingsPanel() {
       appendLog("[profile] Exported profile summary image.");
     };
 
+    const btnDiscord = document.createElement("button");
+    btnDiscord.className = "btn";
+    btnDiscord.textContent = "Join Discord";
+    btnDiscord.onclick = () => {
+      void guarded(async () => {
+        const ok = await window.api.externalOpen(DISCORD_INVITE_URL);
+        if (!ok) {
+          setStatus("Could not open Discord invite right now.");
+          return;
+        }
+        appendLog(`[community] Opened Discord invite: ${DISCORD_INVITE_URL}`);
+      });
+    };
+
     shareRow.appendChild(btnShare);
     shareRow.appendChild(btnExport);
+    shareRow.appendChild(btnDiscord);
     settingsPanelProfile.appendChild(shareRow);
 
     const setupsTitle = document.createElement("div");
@@ -4791,9 +4828,51 @@ function filteredInstances() {
   });
 }
 
+type RunningSnapshot = {
+  count: number;
+  byId: Map<string, boolean>;
+};
+
+function updateTopbarRunningPill(runningCount: number) {
+  if (!windowTopbarPill) return;
+  if (runningCount <= 0) {
+    windowTopbarPill.textContent = "No instances running";
+    return;
+  }
+  windowTopbarPill.textContent = runningCount === 1 ? "1 instance running" : `${runningCount} instances running`;
+}
+
+async function getRunningSnapshot(instances: any[]): Promise<RunningSnapshot> {
+  const byId = new Map<string, boolean>();
+  if (!instances.length) return { count: 0, byId };
+
+  const checks = await Promise.all(
+    instances.map(async (inst) => {
+      const id = String(inst?.id || "").trim();
+      if (!id) return { id, running: false };
+      try {
+        return { id, running: !!(await window.api.launchIsRunning(id)) };
+      } catch {
+        return { id, running: false };
+      }
+    })
+  );
+
+  let count = 0;
+  for (const check of checks) {
+    if (!check.id) continue;
+    byId.set(check.id, check.running);
+    if (check.running) count += 1;
+  }
+  return { count, byId };
+}
+
 async function renderInstances() {
   const items = filteredInstances();
   const active = state.instances?.activeInstanceId ?? null;
+  const allInstances = state.instances?.instances ?? [];
+  const runningSnapshot = await getRunningSnapshot(allInstances);
+  updateTopbarRunningPill(runningSnapshot.count);
   instancesGrid.innerHTML = "";
 
   if (!items.length) {
@@ -4934,7 +5013,9 @@ async function renderInstances() {
 
     const btnPlay = document.createElement("button");
     btnPlay.className = "btn btnPrimary";
-    btnPlay.textContent = "Play";
+    const isRunning = !!runningSnapshot.byId.get(String(i.id || ""));
+    btnPlay.textContent = isRunning ? "Running" : "Play";
+    btnPlay.disabled = isRunning;
     btnPlay.onclick = async () => {
       if (state.instances?.activeInstanceId !== i.id) {
         await window.api.instancesSetActive(i.id);
@@ -5433,6 +5514,17 @@ sidebarSponsoredUpgrade.onclick = () => {
       return;
     }
     appendLog(`[sponsored] Opened upgrade page: ${upgradeUrl}`);
+  });
+};
+
+sidebarDiscordBtn.onclick = () => {
+  void guarded(async () => {
+    const ok = await window.api.externalOpen(DISCORD_INVITE_URL);
+    if (!ok) {
+      setStatus("Could not open Discord invite right now.");
+      return;
+    }
+    appendLog(`[community] Opened Discord invite: ${DISCORD_INVITE_URL}`);
   });
 };
 
@@ -6547,6 +6639,7 @@ renderIconTransformUi();
 setIconPreviewSource(null);
 renderDebugLogsVisibility();
 refreshAll();
+ensureRunningStatusPoll();
 
 if (window.matchMedia) {
   const media = window.matchMedia("(prefers-color-scheme: dark)");

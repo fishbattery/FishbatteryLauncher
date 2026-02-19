@@ -5,6 +5,10 @@ import { getInstancesRoot } from "./paths";
 import { installBridgeToMods } from "./bridgeInstaller";
 import { readJsonFile, writeJsonFile } from "./store";
 
+// Instance registry overview:
+// - Stores canonical instance metadata in `_instances.json`.
+// - Handles create/update/remove/duplicate and active-instance selection.
+// - Maintains per-instance directories and initial bridge pre-install best-effort.
 
 export type InstanceConfig = {
   id: string;

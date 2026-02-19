@@ -14,6 +14,12 @@ import { getCloudSyncStatePath } from "./paths";
 import { readJsonFile, writeJsonFile } from "./store";
 import { requestLauncherAccountAuthed } from "./launcherAccount";
 
+// Cloud sync orchestration overview:
+// - Captures local launcher snapshot (settings + synced instances + mods/packs state).
+// - Compares local/remote revisions and timestamps.
+// - Applies conflict policy and pushes/pulls merged results.
+// - Persists local sync metadata (`lastSyncedAt`, status, revision, snapshot hash).
+
 type SyncConflictPolicy = "ask" | "newer-wins" | "prefer-local" | "prefer-cloud";
 
 type CloudSyncSnapshot = {

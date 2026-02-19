@@ -8,6 +8,12 @@ import { readJsonFile, writeJsonFile } from "./store";
 import { getModCacheDir } from "./paths";
 import { downloadBuffer, resolveLatestModrinth } from "./modrinth";
 
+// Mods service overview (Fabric catalog flow):
+// - Persists enabled/resolved state per instance (`mods-state.json`).
+// - Resolves latest compatible files from Modrinth.
+// - Downloads to cache, installs to instance `/mods`, and tracks update plan severity.
+// - Supports immediate enable/disable and dependency-aware refresh planning.
+
 export type ModsState = {
   enabled: Record<string, boolean>;
   resolved: Record<string, ResolvedMod>;

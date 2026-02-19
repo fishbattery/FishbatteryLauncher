@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import { createInstance, getInstanceDir, listInstances, type InstanceConfig } from "./instances";
 import { pickLoaderVersion, prepareLoaderInstall, type LoaderKind } from "./loaderSupport";
 
+// External pack sources we currently expose in search/import UI.
 export type ExternalProvider = "curseforge" | "technic" | "atlauncher" | "ftb";
 
 export type ProviderPack = {
@@ -80,6 +81,7 @@ const FALLBACK_CATALOG: ProviderPack[] = [
   }
 ];
 
+// Shared HTTP helper with explicit launcher UA for provider API compatibility.
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: { "User-Agent": "FishbatteryLauncher/0.2.1" } });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
@@ -108,6 +110,7 @@ function uniqueName(base: string) {
   return `${base} (${i})`;
 }
 
+// Reject absolute/parent-escape paths when writing provider files locally.
 function safeRelative(rel: string) {
   if (!rel) return false;
   if (path.isAbsolute(rel)) return false;
@@ -115,6 +118,7 @@ function safeRelative(rel: string) {
   return !norm.startsWith("..") && !norm.includes(`..${path.sep}`);
 }
 
+// Normalize provider-specific loader labels into our internal enum.
 function loaderFromText(loader: string): LoaderKind {
   const l = String(loader || "").toLowerCase();
   if (l.includes("fabric")) return "fabric";
@@ -145,6 +149,7 @@ async function searchATLauncher(query: string, limit: number): Promise<ProviderP
     : entries.slice(0, 24);
 
   const out: ProviderPack[] = [];
+  // Resolve details per hit so we can expose mc version/loader in the UI list.
   for (const e of filtered.slice(0, Math.max(1, Math.min(40, limit)))) {
     let mc = "unknown";
     let loader = "varies";
@@ -197,6 +202,7 @@ async function searchFTB(query: string, limit: number): Promise<ProviderPack[]> 
   const q = String(query || "").trim().toLowerCase();
 
   const details: ProviderPack[] = [];
+  // Pull per-pack details and stop once we have enough hits.
   for (const id of ids) {
     try {
       const d = await fetchJson<DetailResp>(`https://api.modpacks.ch/public/modpack/${id}`);
@@ -251,6 +257,7 @@ export async function searchProviderPacks(provider: ExternalProvider, query: str
     }
   }
 
+  // For providers without stable public APIs, return curated fallback entries.
   const fallback = filterByQuery(
     FALLBACK_CATALOG.filter((x) => x.provider === provider),
     query
@@ -328,6 +335,7 @@ export async function installProviderPackFromSearch(opts: {
 
     const files = Array.isArray(v.files) ? v.files : [];
     const instanceDir = getInstanceDir(instanceId);
+    // Download required client files directly into the instance structure.
     for (const f of files) {
       if (!f?.url || !f?.name) continue;
       if (f.serveronly) continue;
@@ -369,6 +377,7 @@ export async function installProviderPackFromSearch(opts: {
       optimizerBackup: null
     });
     await prepareLoaderInstall({ instanceId, mcVersion, loader: "vanilla" });
+    // ATLauncher API currently provides metadata flow here, not direct file manifests.
     return {
       instance: created,
       notes: [

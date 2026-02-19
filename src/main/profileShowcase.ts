@@ -6,6 +6,7 @@ import { detectHardwareSummary } from "./optimizer";
 import { getDataRoot } from "./paths";
 import { readJsonFile, writeJsonFile } from "./store";
 
+// Local profile stats aggregated for optional public showcase output.
 type PlaytimeState = {
   totalMs: number;
   sessions: number;
@@ -40,6 +41,7 @@ function defaultVisibilityState(): ProfileVisibilityState {
 function readPlaytimeState(): PlaytimeState {
   const raw = readJsonFile<PlaytimeState>(PLAYTIME_PATH(), defaultPlaytimeState());
   return {
+    // Clamp and sanitize persisted values to keep summary generation resilient.
     totalMs: Math.max(0, Number(raw?.totalMs || 0)),
     sessions: Math.max(0, Number(raw?.sessions || 0)),
     lastPlayedAt: Number.isFinite(Number(raw?.lastPlayedAt)) ? Number(raw.lastPlayedAt) : null,
@@ -75,6 +77,7 @@ function toPublicRamLabel(totalRamMb: number) {
 
 export function recordPlaySession(instanceId: string, durationMs: number) {
   const normalizedDuration = Math.max(0, Math.round(Number(durationMs || 0)));
+  // Ignore tiny/empty durations so accidental pings do not inflate metrics.
   if (!instanceId || normalizedDuration < 1000) return;
 
   const state = readPlaytimeState();
@@ -137,6 +140,7 @@ export function getProfileSummary() {
   const latestBenchmark = allRuns[0] ?? null;
   const bestBenchmark = allRuns.slice().sort((a, b) => b.avgFps - a.avgFps)[0] ?? null;
 
+  // Include both full and privacy-safe hardware representations.
   return {
     generatedAt: new Date().toISOString(),
     activeInstanceId,

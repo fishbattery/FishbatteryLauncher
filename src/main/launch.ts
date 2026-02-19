@@ -15,6 +15,12 @@ import { getSelectedLocalCapeForAccount } from "./capes";
 import { installBridgeToMods } from "./bridgeInstaller";
 import { recordPlaySession } from "./profileShowcase";
 
+// Launch engine overview:
+// - Prepares per-instance runtime folders/libraries/assets.
+// - Resolves loader/runtime configuration and spawns Minecraft process.
+// - Tracks process lifecycle via `running`/`launching`/`cancelRequested`.
+// - Applies pre-launch/post-exit hooks and records play sessions.
+
 const running = new Map<string, any>(); // instanceId -> child process
 const launching = new Set<string>(); // instanceId currently in launcher bootstrap
 const cancelRequested = new Set<string>(); // stop requested before child process is available
