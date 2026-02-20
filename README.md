@@ -1,70 +1,144 @@
 # Fishbattery Launcher
 
-Fishbattery Launcher is an underwater-themed Minecraft launcher focused on a simple setup, isolated game instances, and curated Fabric mods.
+Fishbattery Launcher is a modern, underwater-themed Minecraft launcher focused on performance, customization, and cross-device consistency.
 
-## What it does
-- Sign in with your Microsoft Minecraft account (supports multiple accounts)
-- Browse and launch vanilla versions, including snapshots
+It is built for players who want more control than the default launcher, without unnecessary complexity.
+
+## Features
+
+### Core Experience
+- Sign in with your Microsoft Minecraft account (multi-account support)
+- Launch vanilla Minecraft, including snapshots
 - Install and launch Fabric profiles
-- Use a curated Modrinth mod catalog
-- Automatically resolve mod compatibility for your selected Minecraft version
-- Keep each profile isolated with its own game files (mods, saves, assets, etc.)
-- View launch logs directly from the launcher
+- Fast and minimal interface inspired by modern developer tools
 
-## Quick start
+
+### Instance-Based System
+- Fully isolated instances:
+  - Mods
+  - Saves
+  - Configs
+  - Resource packs
+- No conflicts between setups
+- Easy switching between different playstyles
+
+
+### Mod Management (Modrinth Integration)
+- Built-in Modrinth catalog
+- Install mods directly inside the launcher
+- Automatic compatibility filtering by Minecraft version
+- Simplified mod setup without manual file management
+
+
+### Customization
+- 15+ built-in themes (including premium themes)
+- Custom background support
+- Adjustable:
+  - Accent color
+  - Corner radius
+  - Border thickness
+  - Background transparency
+- Clean and fully customizable interface
+
+
+### Cloud Sync
+- Syncs your launcher setup across devices:
+  - Instances
+  - Settings
+  - Preferences
+- Log in and your setup is restored automatically
+
+
+### Capes System
+- Built-in cape system with:
+  - Free capes
+  - Premium capes
+  - Custom capes (via cloud)
+- Capes sync across devices
+
+
+### Performance Focus
+- Optimized for lightweight Fabric-based setups
+- Faster startup compared to the official launcher
+- Designed for smooth performance
+
+
+### Logs and Debugging
+- Built-in launch logs
+- Easier troubleshooting for crashes and mod issues
+
+
+## Quick Start
+
 ### Requirements
 - Node.js 18+ (Node.js 20+ recommended)
 - A legitimate Minecraft Java Edition account
 
 ### Run locally
-```bash
+```
 npm install
 npm run dev
 ```
 
-## Build a distributable
-```bash
+
+## Build
+
+```
 npm run dist
 ```
 
 Output files are generated in the `release/` folder.
 
-## Data location
-Launcher data is stored in Electron's `userData` directory:
-- Windows: `%APPDATA%/your-launcher`
-- macOS: `~/Library/Application Support/your-launcher`
-- Linux: `~/.config/your-launcher`
 
-## Customize the mod list
+## Data Location
+
+Launcher data is stored in Electron's `userData` directory:
+
+- Windows: `%APPDATA%/fishbattery`
+- macOS: `~/Library/Application Support/fishbattery`
+- Linux: `~/.config/fishbattery`
+
+
+## Customizing the Mod Catalog
+
 Edit:
-- `src/main/modrinthCatalog.ts`
+```
+src/main/modrinthCatalog.ts
+```
 
 Use Modrinth project IDs (not slugs).
 
-## Cloud capes
-- Cloud cape setup and API contract: `docs/capes-cloud-setup.md`
 
-## Troubleshooting
-- Login issues: confirm your Microsoft account owns Minecraft Java Edition.
-- Launch failures: verify internet connection and check the launcher logs.
-- Mod availability: some mods only support specific Minecraft versions.
+## Philosophy
 
-## Contributing
-Issues and pull requests are welcome.
-If you find a bug, include steps to reproduce and the relevant logs.
+Fishbattery is built around three core ideas:
 
-## Tech stack
+- Simplicity — no unnecessary clutter  
+- Control — full ownership of your setup  
+- Consistency — the same experience on every device  
+
+
+## Tech Stack
+
 - Electron
 - TypeScript
-- `minecraft-launcher-core`
-- `msmc`
+- minecraft-launcher-core
+- msmc (Microsoft authentication)
 - Modrinth API
+
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+If you find a bug:
+- Include steps to reproduce
+- Attach relevant logs
 
 
 ## License
 
-### FishbatteryLauncher  
+Fishbattery Launcher  
 Copyright (C) 2026 Fishbattery
 
 Licensed under the GNU General Public License v3.0.
-
